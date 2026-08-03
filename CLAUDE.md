@@ -20,7 +20,8 @@ the simulated work system with knowable ground truth.
 | `src/app/` | React UI: `App` (state) → `Timeline`, `OrgPanel`, `Sparkline` |
 | `scripts/peek.ts` | Terminal timeline viewer |
 | `docs/SPEC.md` | Vision, architecture, roadmap, known simplifications |
-| `docs/research/` | **Gitignored** local research + personal prep — never commit |
+| `docs/research/org-realism.md` | Published benchmarks every calibration constant cites |
+| `docs/research/` (rest) | **Gitignored** local prep — never commit |
 
 ## Commands
 

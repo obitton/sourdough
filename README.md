@@ -35,16 +35,26 @@ history, and it's what makes the output useful as sync-test data.
 seeded PRNG ([rng.ts](src/engine/rng.ts)); all date math is UTC ([dates.ts](src/engine/dates.ts));
 nothing in the engine touches `Math.random` or the clock. The CLI and the web app produce
 byte-identical histories for the same seed. Deterministic worlds are reproducible test
-fixtures: a bug found in seed `millstone-3` can be handed to a teammate as two words.
+fixtures: a bug found in seed `loaf-28` can be handed to a teammate as two words.
 
-**3. Realism is enforced, not hoped for.** A company shouldn't have seven CTOs. The simulator
-is calibrated against published startup benchmarks (Carta/Kruze medians for headcount by
-stage, round spacing, attrition with its 12-month-cliff spike, layoff sizes, failure rates),
-and a validator ([validate.ts](src/engine/validate.ts)) enforces hard invariants: singleton
-executive titles, no orphaned reports, acyclic reporting chains that always reach the founder,
-no events for departed people. The test suite folds thousands of generated histories through
-the validator and requires **every prefix** of every log to be a valid organization — not just
-the end state.
+**3. Realism is enforced, not hoped for** — and checked from both ends. A company shouldn't
+have seven CTOs, and it also shouldn't go from 2 people to 400 in a year. Those are different
+failures, so there are two suites.
+
+*Structural:* a validator ([validate.ts](src/engine/validate.ts)) enforces hard invariants —
+singleton executive titles, no orphaned reports, acyclic reporting chains that always reach
+the founder, no events for departed people — and the tests fold thousands of generated
+histories through it, requiring **every prefix** of every log to be a valid organization, not
+just the end state.
+
+*Statistical:* every calibration constant traces to published benchmarks
+([docs/research/org-realism.md](docs/research/org-realism.md) — Carta/Kruze medians for
+headcount by stage, round spacing, attrition, layoff sizes, failure rates), and
+[calibration.test.ts](src/engine/calibration.test.ts) checks that the *emergent output* still
+lands in those bands: headcount at each raise, round spacing, cut sizes, graduation and
+acquisition rates, and the 12-month equity cliff showing up as a real spike in the departure
+histogram. Calibrating inputs and verifying outputs are not the same thing — writing the
+second suite is what surfaced the two bugs fixed in [§Decisions](#decisions-worth-knowing).
 
 ## What you're looking at
 
@@ -71,6 +81,7 @@ src/engine/     pure TypeScript, no React, no I/O — the whole simulation
   rng.ts dates.ts names.ts
 src/app/        React UI (Vite) — timeline, org panel, sparkline, hand-written CSS
 scripts/peek.ts terminal timeline viewer
+docs/research/org-realism.md   the benchmarks every calibration constant cites
 ```
 
 ## Decisions worth knowing
@@ -84,6 +95,20 @@ scripts/peek.ts terminal timeline viewer
 - **Simulation ticks weekly.** Coarse enough to stay fast (most histories simulate in
   milliseconds; even a full 10-year survivor takes only a few hundred), fine enough that no
   two events need sub-week ordering beyond the `seq` counter.
+- **A company can survive a second layoff, and can stop raising without dying.** Both were
+  found by measuring rather than reading: repeat layoff rounds used to force a wind-down, and
+  anything that stalled between rounds hit the runway rule, so the generator could only
+  produce rocket ships and corpses. Real outcomes split roughly into thirds — acquired, shut
+  down, and still quietly operating — so `defaultAlive` lets a company find its own revenue
+  and step off the runway clock. Its rate is derived from that third, not tuned to taste.
+- **The `crouton` preset gets no special prior.** It briefly had a flattering one — which
+  meant the single company whose real history can be checked was also the one the model was
+  tilted toward. It now runs on the same neutral defaults as every synthetic seed, and gets
+  whatever future the model actually predicts.
+- **Calibration assertions are bands, not point values.** Changing how many times the RNG is
+  drawn reshuffles every downstream outcome, so a statistic like "share of endings that are
+  acquisitions" moves several points between builds without the model changing at all. The
+  bands are wide enough to survive that and narrow enough to catch drift into fantasy.
 
 Known simplifications and the longer-term vision — a fake-HRIS API with per-vendor
 "degradation profiles" so Crouton's reconstruction can be scored against ground truth — live

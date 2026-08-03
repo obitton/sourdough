@@ -46,7 +46,12 @@ export function croutonConfig(until: IsoDate, simulateFrom?: IsoDate): SimConfig
     },
   ];
 
-  return { seed: 'crouton', until, prologue, simulateFrom, ambition: 0.7, turbulence: 0.35 };
+  // No ambition/turbulence override on purpose. An earlier version gave this
+  // preset a flattering prior, which meant the one company whose real history
+  // we can check was also the one company the model was tilted toward. It runs
+  // on the same neutral defaults as every synthetic seed; the future it gets is
+  // the one the model actually predicts.
+  return { seed: 'crouton', until, prologue, simulateFrom };
 }
 
 /** A fully synthetic company; the seed decides everything about it. */
