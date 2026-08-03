@@ -11,6 +11,11 @@ Built for the Crouton take-home. Crouton reconstructs an organization's history 
 systems that mostly expose only the present; a simulator like this is the test bed where the
 ground truth is actually knowable.
 
+![The Crouton starter: the timeline on the left with the org chart, headcount sparkline and
+company stats as of the selected date on the right. Events up to today are real history from
+the take-home prompt; the dimmed ones below are one simulated
+future.](docs/screenshot.png)
+
 ## Run it
 
 ```bash
