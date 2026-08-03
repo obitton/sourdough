@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+
+# local working notes; org-realism.md ships because the calibration cites it
+docs/research/*
+!docs/research/org-realism.md
+.claude/skills/*
+!.claude/skills/sim-engine/
