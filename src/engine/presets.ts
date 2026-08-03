@@ -8,7 +8,7 @@ import type { IsoDate, ScriptedEvent } from './types';
  * pre-seed) replayed verbatim as a scripted prologue — then the simulator
  * takes over from today and plays one possible future.
  */
-export function croutonConfig(until: IsoDate): SimConfig {
+export function croutonConfig(until: IsoDate, simulateFrom?: IsoDate): SimConfig {
   const prologue: ScriptedEvent[] = [
     {
       type: 'company-founded',
@@ -46,7 +46,7 @@ export function croutonConfig(until: IsoDate): SimConfig {
     },
   ];
 
-  return { seed: 'crouton', until, prologue, ambition: 0.7, turbulence: 0.35 };
+  return { seed: 'crouton', until, prologue, simulateFrom, ambition: 0.7, turbulence: 0.35 };
 }
 
 /** A fully synthetic company; the seed decides everything about it. */

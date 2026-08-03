@@ -13,7 +13,8 @@ import { simulate } from '../src/engine/simulate';
 import { validateEvents } from '../src/engine/validate';
 
 const [seed = 'crouton', until = '2031-12-31'] = process.argv.slice(2);
-const config = seed === 'crouton' ? croutonConfig(until) : randomConfig(seed, until);
+const today = new Date().toISOString().slice(0, 10);
+const config = seed === 'crouton' ? croutonConfig(until, today) : randomConfig(seed, until);
 const events = simulate(config);
 const names = buildNameIndex(events);
 

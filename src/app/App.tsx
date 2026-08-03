@@ -34,8 +34,12 @@ export function App() {
   const deferredSeed = useDeferredValue(seed);
 
   const events = useMemo(() => {
+    // simulateFrom keeps the fiction strictly in the future: everything the
+    // crouton preset shows up to today really happened.
     const config =
-      deferredSeed === 'crouton' ? croutonConfig(HORIZON) : randomConfig(deferredSeed, HORIZON);
+      deferredSeed === 'crouton'
+        ? croutonConfig(HORIZON, TODAY)
+        : randomConfig(deferredSeed, HORIZON);
     return simulate(config);
   }, [deferredSeed]);
 

@@ -18,6 +18,11 @@ describe('projection (time travel)', () => {
     expect(spring.city).toBe('New York, NY');
     expect(headcount(spring)).toBe(1);
 
+    // With simulateFrom, everything before "today" is exactly the real story —
+    // the simulator may not invent recent past.
+    const guarded = simulate(croutonConfig('2032-01-01', '2026-08-03'));
+    expect(headcount(project(guarded, '2026-08-03'))).toBe(3);
+
     // As of the take-home's writing: Adam, Breno (Design), Griffin (part-time GTM).
     const now = project(events, '2026-06-30');
     const people = activePeople(now);

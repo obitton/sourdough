@@ -21,6 +21,12 @@ export interface SimConfig {
   founding?: { companyName: string; city: string; founderName: string; at: IsoDate };
   /** Scripted history replayed verbatim before the simulator takes over. */
   prologue?: ScriptedEvent[];
+  /**
+   * Earliest date the simulator may invent events. Without it, simulation
+   * resumes right after the prologue — which would present fiction as the
+   * recent past when the prologue is a real company's real history.
+   */
+  simulateFrom?: IsoDate;
   /** 0..1 — hiring pace and fundraising appetite. Default 0.5. */
   ambition?: number;
   /** 0..1 — attrition, layoff and failure risk. Default 0.5. */
@@ -166,6 +172,8 @@ export function simulate(config: SimConfig): OrgEvent[] {
     cursor = at;
     lastRaiseAt = at;
   }
+
+  if (config.simulateFrom && config.simulateFrom > cursor) cursor = config.simulateFrom;
 
   const founder = Object.values(ctx.state.people).find((p) => p.isFounder);
   if (!founder) throw new Error('prologue must include a company-founded event');
