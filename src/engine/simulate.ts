@@ -115,7 +115,11 @@ interface SimCtx {
   stageIdx: number;
   weeksInStage: number;
   hiringFreezeWeeks: number;
+  /** Weeks left in the elevated-attrition window a layoff leaves behind. */
+  postLayoffWeeks: number;
   downturnsThisStage: number;
+  /** Reached self-sustaining revenue: no longer on a runway clock. */
+  defaultAlive: boolean;
   hasRelocated: boolean;
   windDownAt: IsoDate | null;
   lastRaiseAmount: number;
@@ -139,7 +143,9 @@ export function simulate(config: SimConfig): OrgEvent[] {
     stageIdx: 0,
     weeksInStage: 0,
     hiringFreezeWeeks: 0,
+    postLayoffWeeks: 0,
     downturnsThisStage: 0,
+    defaultAlive: false,
     hasRelocated: false,
     windDownAt: null,
     lastRaiseAmount: 0,
@@ -189,6 +195,7 @@ export function simulate(config: SimConfig): OrgEvent[] {
     if (cursor > config.until) break;
     ctx.weeksInStage += 1;
     if (ctx.hiringFreezeWeeks > 0) ctx.hiringFreezeWeeks -= 1;
+    if (ctx.postLayoffWeeks > 0) ctx.postLayoffWeeks -= 1;
 
     if (ctx.windDownAt !== null) {
       if (cursor >= ctx.windDownAt) executeShutdown(ctx, cursor);
@@ -219,15 +226,29 @@ function stepFundraising(ctx: SimCtx, at: IsoDate, ambitionMul: number, turbulen
   const stage = STAGES[ctx.stageIdx];
   const lastStage = ctx.stageIdx === STAGES.length - 1;
 
-  if (lastStage) {
-    // Steady state: no more rounds modeled; a good exit remains possible.
+  // Off the fundraising treadmill — past the last modeled round, or running on
+  // its own revenue — but still acquirable.
+  if (lastStage || ctx.defaultAlive) {
     if (ctx.rng.chance(0.0008)) acquire(ctx, at);
-    return;
+    if (lastStage || ctx.state.status !== 'operating') return;
+  }
+
+  // Not every company either raises or dies. Across large outcome datasets the
+  // split is roughly equal thirds — acquired, shut down, and still quietly
+  // operating (org-realism.md §6). A company that finds its own revenue stops
+  // running on someone else's clock; without this the simulator can only
+  // produce rocket ships and corpses.
+  //
+  // Rate is derived, not tuned: a stalled company is eligible for the ~110
+  // weeks between its raise window opening and the runway running out, and we
+  // want ~1 in 3 of them to make it — 1-(1-p)^110 = 0.33 → p ≈ 0.004.
+  if (ctx.weeksInStage > stage.minWeeksToNext && ctx.rng.chance(0.004)) {
+    ctx.defaultAlive = true;
   }
 
   // A company that overstays its runway winds down (research: shutdown lands
   // 24–42 months after the last raise).
-  if (ctx.weeksInStage > stage.minWeeksToNext + 110) {
+  if (!ctx.defaultAlive && ctx.weeksInStage > stage.minWeeksToNext + 110) {
     beginWindDown(ctx, at);
     return;
   }
@@ -286,10 +307,17 @@ function stepDownturn(ctx: SimCtx, at: IsoDate, turbulence: number): void {
   }
 
   ctx.hiringFreezeWeeks = 20;
+  // Morale and trust take the hit too: voluntary exits stay elevated for about
+  // two quarters after a cut (org-realism.md §5).
+  ctx.postLayoffWeeks = 26;
   ctx.downturnsThisStage += 1;
-  // Research: ~50% of struggling companies cut again within a year; two rounds
-  // without a raise in between means the money is gone.
-  if (ctx.downturnsThisStage >= 2) beginWindDown(ctx, at);
+  // A second round is a bad sign, not a death certificate: repeat cuts are the
+  // norm among struggling companies (~70% land within a year of the first, and
+  // roughly half of all tech layoffs come from repeat-cutters), and ~5% of them
+  // reach a third. Compounding odds, rather than a hard rule, keeps survivors
+  // in the population — a company that cuts twice and lives is a real shape.
+  const windDownChance = ctx.downturnsThisStage >= 3 ? 0.8 : ctx.downturnsThisStage >= 2 ? 0.45 : 0;
+  if (windDownChance > 0 && ctx.rng.chance(windDownChance)) beginWindDown(ctx, at);
 }
 
 function stepExecHires(ctx: SimCtx, at: IsoDate): void {
@@ -418,7 +446,8 @@ function stepHiring(ctx: SimCtx, at: IsoDate, ambitionMul: number): void {
 function stepAttrition(ctx: SimCtx, at: IsoDate, turbulence: number): void {
   // Base hazard ≈ 18–19% annualized at default turbulence, shaped by tenure —
   // the spike after week 52 is the equity-cliff exit wave the research found.
-  const base = 0.004 * (0.6 + 0.8 * turbulence);
+  // Survivors of a layoff update their résumés: +50% for two quarters.
+  const base = 0.004 * (0.6 + 0.8 * turbulence) * (ctx.postLayoffWeeks > 0 ? 1.5 : 1);
   for (const person of activePeople(ctx.state)) {
     if (person.isFounder) continue;
     const tenure = weeksBetween(person.startedAt, at);
