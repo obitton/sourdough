@@ -44,11 +44,11 @@ interface StageSpec {
 }
 
 const STAGES: StageSpec[] = [
-  { round: null,       target: 2,   minWeeksToNext: 16,  raiseChancePerWeek: 0.06,  gateDeathChance: 0.05, gateAcquireChance: 0 },
-  { round: 'pre-seed', target: 6,   minWeeksToNext: 65,  raiseChancePerWeek: 0.04,  gateDeathChance: 0.25, gateAcquireChance: 0.02 },
-  { round: 'seed',     target: 17,  minWeeksToNext: 95,  raiseChancePerWeek: 0.035, gateDeathChance: 0.4,  gateAcquireChance: 0.05 },
-  { round: 'series-a', target: 50,  minWeeksToNext: 100, raiseChancePerWeek: 0.035, gateDeathChance: 0.3,  gateAcquireChance: 0.06 },
-  { round: 'series-b', target: 110, minWeeksToNext: 110, raiseChancePerWeek: 0.02,  gateDeathChance: 0.2,  gateAcquireChance: 0.08 },
+  { round: null,       target: 2,   minWeeksToNext: 16, raiseChancePerWeek: 0.06,  gateDeathChance: 0.05, gateAcquireChance: 0 },
+  { round: 'pre-seed', target: 6,   minWeeksToNext: 50, raiseChancePerWeek: 0.032, gateDeathChance: 0.25, gateAcquireChance: 0.02 },
+  { round: 'seed',     target: 17,  minWeeksToNext: 70, raiseChancePerWeek: 0.024, gateDeathChance: 0.4,  gateAcquireChance: 0.05 },
+  { round: 'series-a', target: 50,  minWeeksToNext: 75, raiseChancePerWeek: 0.026, gateDeathChance: 0.3,  gateAcquireChance: 0.06 },
+  { round: 'series-b', target: 110, minWeeksToNext: 110, raiseChancePerWeek: 0.02, gateDeathChance: 0.2,  gateAcquireChance: 0.08 },
 ];
 
 const ROUND_AMOUNTS: Record<Round, [number, number]> = {
@@ -144,8 +144,8 @@ export function simulate(config: SimConfig): OrgEvent[] {
 
   if (config.prologue && config.prologue.length > 0) {
     for (const scripted of config.prologue) emit(ctx, scripted);
-    ctx.personCounter = Object.keys(ctx.state.people).length;
-    ctx.teamCounter = Object.keys(ctx.state.teams).length;
+    ctx.personCounter = maxIdSuffix(Object.keys(ctx.state.people), 'p');
+    ctx.teamCounter = maxIdSuffix(Object.keys(ctx.state.teams), 't');
     ctx.hasRelocated = config.prologue.some((e) => e.type === 'office-moved');
     cursor = config.prologue[config.prologue.length - 1].at;
     const lastRaise = [...config.prologue].reverse().find((e) => e.type === 'funding-raised');
@@ -190,6 +190,7 @@ export function simulate(config: SimConfig): OrgEvent[] {
     stepFundraising(ctx, cursor, ambitionMul, turbulence);
     if (ctx.state.status !== 'operating' || ctx.windDownAt !== null) continue;
     stepDownturn(ctx, cursor, turbulence);
+    if (ctx.state.status !== 'operating' || ctx.windDownAt !== null) continue;
     stepExecHires(ctx, cursor);
     stepAppointedLeads(ctx, cursor);
     stepHiring(ctx, cursor, ambitionMul);
@@ -218,7 +219,7 @@ function stepFundraising(ctx: SimCtx, at: IsoDate, ambitionMul: number, turbulen
 
   // A company that overstays its runway winds down (research: shutdown lands
   // 24–42 months after the last raise).
-  if (ctx.weeksInStage > stage.minWeeksToNext + 85) {
+  if (ctx.weeksInStage > stage.minWeeksToNext + 110) {
     beginWindDown(ctx, at);
     return;
   }
@@ -230,7 +231,10 @@ function stepFundraising(ctx: SimCtx, at: IsoDate, ambitionMul: number, turbulen
   const death = stage.gateDeathChance * (0.5 + turbulence);
   const roll = ctx.rng.next();
   if (roll < death) {
-    beginWindDown(ctx, at);
+    // ~30% of failed raises end in an acqui-hire soft landing rather than a
+    // shutdown, keeping acquisitions ~25–35% of endings (org-realism.md).
+    if (ctx.rng.chance(0.3)) acquire(ctx, at);
+    else beginWindDown(ctx, at);
   } else if (roll < death + stage.gateAcquireChance) {
     acquire(ctx, at);
   } else {
@@ -252,12 +256,15 @@ function stepDownturn(ctx: SimCtx, at: IsoDate, turbulence: number): void {
   if (ctx.weeksInStage <= stage.minWeeksToNext + 26) return;
   if (!ctx.rng.chance(0.015 * (0.5 + turbulence))) return;
 
+  // Below ~11 heads a company sheds people through ordinary attrition; a
+  // formal one-person "layoff round" reads absurd on the timeline.
   const nonFounders = activePeople(ctx.state).filter((p) => !p.isFounder);
-  if (nonFounders.length < 4) return;
+  if (nonFounders.length < 10) return;
 
   // Median real-world cut is ~15% (range 10–30).
   const pct = ctx.rng.weighted([[12, 3], [15, 4], [20, 2], [25, 1], [30, 1]] as const);
   const count = Math.max(1, Math.round((nonFounders.length * pct) / 100));
+  if (count < 2) return;
   const victims = sampleWithoutReplacement(
     ctx.rng,
     nonFounders,
@@ -278,6 +285,8 @@ function stepDownturn(ctx: SimCtx, at: IsoDate, turbulence: number): void {
 }
 
 function stepExecHires(ctx: SimCtx, at: IsoDate): void {
+  // Nobody hires a CFO the same month they lay off 15% of the company.
+  if (ctx.hiringFreezeWeeks > 0) return;
   const { rng, state } = ctx;
   const stageIdx = ctx.stageIdx;
 
@@ -298,24 +307,93 @@ function stepExecHires(ctx: SimCtx, at: IsoDate): void {
 
 function stepAppointedLeads(ctx: SimCtx, at: IsoDate): void {
   for (const func of Object.keys(APPOINTED_LEAD_TITLE) as Func[]) {
-    // Span of control: ~7 people without a leader means someone steps up.
-    if (countFunc(ctx.state, func) < 7 || funcLeader(ctx.state, func)) continue;
-    const candidates = activePeople(ctx.state)
-      .filter((p) => p.func === func)
-      .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-    const lead = candidates[0];
-    if (!lead) continue;
-    emit(ctx, {
-      type: 'person-promoted',
-      at,
-      personId: lead.id,
-      fromTitle: lead.title,
-      toTitle: APPOINTED_LEAD_TITLE[func],
-    });
-    if (lead.managerId !== ctx.founderId) {
-      emit(ctx, { type: 'manager-changed', at, personId: lead.id, managerId: ctx.founderId });
+    const leader = funcLeader(ctx.state, func);
+
+    if (!leader) {
+      // Span of control: ~7 people without a leader means someone steps up.
+      if (countFunc(ctx.state, func) < 7) continue;
+      const candidates = activePeople(ctx.state)
+        .filter((p) => p.func === func)
+        .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+      const lead = candidates[0];
+      if (!lead) continue;
+      emit(ctx, {
+        type: 'person-promoted',
+        at,
+        personId: lead.id,
+        fromTitle: lead.title,
+        toTitle: APPOINTED_LEAD_TITLE[func],
+      });
+      if (lead.managerId !== ctx.founderId) {
+        emit(ctx, { type: 'manager-changed', at, personId: lead.id, managerId: ctx.founderId });
+      }
+      reassignFuncReports(ctx, at, func, lead.id);
+      continue;
     }
-    reassignFuncReports(ctx, at, func, lead.id);
+
+    // When a leader departs, their subtree cascades to the founder; re-attach
+    // those people to the function's current leader so nobody floats forever.
+    for (const person of activePeople(ctx.state)) {
+      if (
+        person.func === func &&
+        person.managerId === ctx.founderId &&
+        person.id !== leader.id &&
+        !LEADER_TITLES.has(person.title)
+      ) {
+        emit(ctx, { type: 'manager-changed', at, personId: person.id, managerId: leader.id });
+      }
+    }
+
+    // Span of control, part two: new hires land under the function leader, so
+    // without delegation a CTO ends up personally managing 50 engineers. An
+    // overloaded leader first tops up existing sub-leads with spare capacity;
+    // a new sub-lead is only promoted when everyone is full — otherwise the
+    // org sprouts a dozen co-equal leads instead of a management layer.
+    const spanOf = (id: string) =>
+      activePeople(ctx.state).filter((p) => p.managerId === id).length;
+    const directsOf = () =>
+      activePeople(ctx.state).filter((p) => p.managerId === leader.id && p.func === func);
+
+    if (directsOf().length <= 9) continue;
+
+    const overflow = directsOf()
+      .filter((p) => !LEADER_TITLES.has(p.title))
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.id.localeCompare(a.id));
+    let excess = directsOf().length - 8;
+
+    for (const mover of overflow) {
+      if (excess <= 0) break;
+      const target = activePeople(ctx.state)
+        .filter(
+          (p) =>
+            p.func === func &&
+            p.id !== leader.id &&
+            p.title === APPOINTED_LEAD_TITLE[func] &&
+            spanOf(p.id) < 8,
+        )
+        .sort((a, b) => spanOf(a.id) - spanOf(b.id) || a.id.localeCompare(b.id))[0];
+      if (!target) break;
+      emit(ctx, { type: 'manager-changed', at, personId: mover.id, managerId: target.id });
+      excess -= 1;
+    }
+
+    if (excess > 0) {
+      const remaining = directsOf()
+        .filter((p) => !LEADER_TITLES.has(p.title))
+        .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id));
+      const lead = remaining[0];
+      if (!lead) continue;
+      emit(ctx, {
+        type: 'person-promoted',
+        at,
+        personId: lead.id,
+        fromTitle: lead.title,
+        toTitle: APPOINTED_LEAD_TITLE[func],
+      });
+      for (const mover of remaining.slice(1, 1 + Math.floor(remaining.length / 2))) {
+        emit(ctx, { type: 'manager-changed', at, personId: mover.id, managerId: lead.id });
+      }
+    }
   }
 }
 
@@ -392,9 +470,20 @@ function stepRelocation(ctx: SimCtx, at: IsoDate): void {
 // ---------------------------------------------------------------------------
 
 function emit(ctx: SimCtx, scripted: ScriptedEvent): void {
-  const event = { ...scripted, seq: ctx.seq++ } as OrgEvent;
+  const event: OrgEvent = { ...scripted, seq: ctx.seq++ };
   applyEvent(ctx.state, event);
   ctx.events.push(event);
+}
+
+/** Resume id counters after a prologue without assuming dense p1..pN ids. */
+function maxIdSuffix(ids: string[], prefix: string): number {
+  let max = 0;
+  for (const id of ids) {
+    if (!id.startsWith(prefix)) continue;
+    const n = Number(id.slice(prefix.length));
+    if (Number.isInteger(n) && n > max) max = n;
+  }
+  return max;
 }
 
 function hireRegular(ctx: SimCtx, at: IsoDate): void {
@@ -411,6 +500,16 @@ function hireExec(ctx: SimCtx, at: IsoDate, title: string, func: Func, managerId
   const teamId = funcTeam(ctx.state, func)?.id ?? null;
   const exec = hirePerson(ctx, at, { title, func, teamId, managerId, employment: 'full-time' });
   reassignFuncReports(ctx, at, func, exec.id);
+  // An exec hired under an existing leader of the same function (VP Eng under
+  // a CTO) takes over that leader's ICs — otherwise the new VP runs nobody.
+  const boss = ctx.state.people[managerId];
+  if (boss && !boss.isFounder && boss.func === func) {
+    for (const person of activePeople(ctx.state)) {
+      if (person.managerId === boss.id && person.id !== exec.id && !LEADER_TITLES.has(person.title)) {
+        emit(ctx, { type: 'manager-changed', at, personId: person.id, managerId: exec.id });
+      }
+    }
+  }
 }
 
 function hirePerson(
@@ -525,11 +624,14 @@ function pickTitle(ctx: SimCtx, func: Func): string {
 }
 
 function pickEmployment(ctx: SimCtx, func: Func): Employment {
-  // Research: ~20% of early-stage workforces are contractors/part-timers,
-  // concentrated in design and GTM (see: Griffin, part-time growth).
-  const early = ctx.stageIdx <= 2 && (func === 'design' || func === 'gtm');
-  if (early && ctx.rng.chance(0.25)) return 'part-time';
-  if (early && ctx.rng.chance(0.2)) return 'contract';
+  // Research: ~20% of the early-stage workforce is contract/part-time —
+  // concentrated in design and GTM (see: Griffin, part-time growth) but
+  // present in every function.
+  const early = ctx.stageIdx <= 2;
+  const soft = func === 'design' || func === 'gtm';
+  if (early && soft && ctx.rng.chance(0.25)) return 'part-time';
+  if (early && soft && ctx.rng.chance(0.2)) return 'contract';
+  if (early && !soft && ctx.rng.chance(0.15)) return 'contract';
   if (!early && ctx.rng.chance(0.08)) return 'contract';
   return 'full-time';
 }

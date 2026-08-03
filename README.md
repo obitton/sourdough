@@ -81,9 +81,9 @@ scripts/peek.ts terminal timeline viewer
   simulator feeds a real sync pipeline; see [docs/SPEC.md](docs/SPEC.md).
 - **No chart or UI libraries.** The sparkline is ~60 lines of SVG; the org chart is a nested
   list. Every line in this repo is explainable.
-- **Simulation ticks weekly.** Coarse enough to stay fast (a 10-year company simulates in
-  single-digit milliseconds), fine enough that no two events need sub-week ordering beyond
-  the `seq` counter.
+- **Simulation ticks weekly.** Coarse enough to stay fast (most histories simulate in
+  milliseconds; even a full 10-year survivor takes only a few hundred), fine enough that no
+  two events need sub-week ordering beyond the `seq` counter.
 
 Known simplifications and the longer-term vision — a fake-HRIS API with per-vendor
 "degradation profiles" so Crouton's reconstruction can be scored against ground truth — live

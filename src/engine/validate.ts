@@ -87,6 +87,7 @@ export function validateEvents(events: readonly OrgEvent[]): string[] {
   const problems: string[] = [];
   const hired = new Set<string>();
   const departed = new Set<string>();
+  const createdTeams = new Set<string>();
   let prevSeq = -1;
   let prevAt = '';
 
@@ -100,6 +101,11 @@ export function validateEvents(events: readonly OrgEvent[]): string[] {
 
     const personId =
       'personId' in event ? event.personId : event.type === 'company-founded' ? event.founderId : null;
+
+    if (event.type === 'team-created') {
+      if (createdTeams.has(event.teamId)) problems.push(`team ${event.teamId} created twice`);
+      createdTeams.add(event.teamId);
+    }
 
     if (event.type === 'company-founded' || event.type === 'person-hired') {
       if (personId && hired.has(personId)) problems.push(`person ${personId} hired twice`);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   addDays,
   croutonConfig,
@@ -28,19 +28,31 @@ const clamp = (value: string, min: string, max: string) =>
 export function App() {
   const [seedInput, setSeedInput] = useState('crouton');
   const seed = seedInput.trim() || 'crouton';
+  // Deferred so fast typing in the seed box doesn't run a full simulation on
+  // every keystroke — the previous company stays interactive until the new
+  // one is ready.
+  const deferredSeed = useDeferredValue(seed);
 
   const events = useMemo(() => {
-    const config = seed === 'crouton' ? croutonConfig(HORIZON) : randomConfig(seed, HORIZON);
+    const config =
+      deferredSeed === 'crouton' ? croutonConfig(HORIZON) : randomConfig(deferredSeed, HORIZON);
     return simulate(config);
-  }, [seed]);
+  }, [deferredSeed]);
 
   const first = events[0].at;
   const last = events[events.length - 1].at;
 
   const [asOf, setAsOf] = useState(() => clamp(TODAY, first, last));
-  useEffect(() => setAsOf(clamp(TODAY, first, last)), [first, last]);
-
   const [playing, setPlaying] = useState(false);
+
+  // Render-time reset when a different company arrives — an effect here would
+  // commit one throwaway frame of the new company at the old date.
+  const [shownSeed, setShownSeed] = useState(deferredSeed);
+  if (shownSeed !== deferredSeed) {
+    setShownSeed(deferredSeed);
+    setAsOf(clamp(TODAY, first, last));
+    setPlaying(false);
+  }
   useEffect(() => {
     if (!playing) return;
     const id = window.setInterval(() => setAsOf((c) => (c >= last ? c : addDays(c, 14))), 90);
@@ -130,9 +142,9 @@ export function App() {
           </button>
         ))}
         <span className="filter-note">
-          {seed === 'crouton'
+          {deferredSeed === 'crouton'
             ? 'real history through today, one simulated future beyond it'
-            : `synthetic company from starter "${seed}"`}
+            : `synthetic company from starter "${deferredSeed}"`}
         </span>
       </div>
 
@@ -153,7 +165,7 @@ export function App() {
       </main>
 
       <footer className="statusbar">
-        starter “{seed}” → {events.length} events · deterministic: the same starter always bakes the same company
+        starter “{deferredSeed}” → {events.length} events · deterministic: the same starter always bakes the same company
       </footer>
     </div>
   );

@@ -65,11 +65,12 @@ body {
 .seed-field input {
   background: none;
   border: none;
-  outline: none;
+  outline: none; /* focus surfaces on the pill via :focus-within below */
   color: var(--text);
   font: inherit;
   width: 130px;
 }
+.seed-field:focus-within { border-color: var(--accent); }
 
 button {
   background: var(--panel);
@@ -83,6 +84,12 @@ button {
 button:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
 button:disabled { opacity: 0.45; cursor: default; }
 button.play { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+
+button:focus-visible,
+input[type='range']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* ---------- filter bar ---------- */
 

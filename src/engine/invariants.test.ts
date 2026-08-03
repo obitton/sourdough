@@ -45,6 +45,34 @@ describe('realism invariants', () => {
     }
   });
 
+  it('keeps layoff rounds and spans of control believable', () => {
+    for (const seed of SEEDS.slice(0, 15)) {
+      const events = simulate(randomConfig(seed, UNTIL));
+      const state = emptyState();
+      for (const event of events) {
+        applyEvent(state, event);
+        // A formal layoff round of one person is an absurdity, not an event
+        // (the 100% round during shutdown is the announced wind-down).
+        if (event.type === 'layoff-round' && event.pct !== 100) {
+          expect(event.count, seed).toBeGreaterThanOrEqual(2);
+        }
+      }
+      // Nobody below the founder should personally manage a small village.
+      // Steady state is ≤ ~10 directs; 20 allows one departure-cascade that
+      // lands on the log's final week, before the weekly rebalance can run.
+      const reports = new Map<string, number>();
+      for (const person of activePeople(state)) {
+        if (person.managerId) {
+          reports.set(person.managerId, (reports.get(person.managerId) ?? 0) + 1);
+        }
+      }
+      for (const [managerId, count] of reports) {
+        if (state.people[managerId].isFounder) continue;
+        expect(count, `${seed}: ${state.people[managerId].name}`).toBeLessThanOrEqual(20);
+      }
+    }
+  });
+
   it('produces a believable spread of outcomes across seeds', () => {
     let ended = 0;
     let alive = 0;
