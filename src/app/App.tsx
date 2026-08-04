@@ -8,12 +8,14 @@ import {
   simulate,
   validateEvents,
   validateState,
+  type Intervention,
   type IsoDate,
 } from '../engine';
 import { buildNameIndex } from '../engine/describe';
 import { emptyFinance, financeSeries } from '../engine/metrics';
 import { CATEGORY, CATEGORY_LABELS, type Category } from './meta';
 import { OrgPanel } from './OrgPanel';
+import { ScenarioBar } from './ScenarioBar';
 import { Timeline } from './Timeline';
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -43,6 +45,8 @@ export function App() {
   // one is ready.
   const deferredSeed = useDeferredValue(seed);
 
+  const [scenario, setScenario] = useState<Intervention[]>([]);
+
   const events = useMemo(() => {
     // simulateFrom keeps the fiction strictly in the future: everything the
     // crouton preset shows up to today really happened.
@@ -50,8 +54,12 @@ export function App() {
       deferredSeed === 'crouton'
         ? croutonConfig(HORIZON, TODAY)
         : randomConfig(deferredSeed, HORIZON);
-    return simulate(config);
-  }, [deferredSeed]);
+    // Same seed, same RNG stream — so every event before the first staged
+    // decision is identical to the baseline run, and only the future branches.
+    return simulate({ ...config, interventions: scenario });
+  }, [deferredSeed, scenario]);
+
+  const branchAt = scenario.length > 0 ? scenario[0].at : null;
 
   const first = events[0].at;
   const last = events[events.length - 1].at;
@@ -71,6 +79,7 @@ export function App() {
     setAsOf(clamp(TODAY, first, last));
     setPlaying(false);
     setWhatIfId(null);
+    setScenario([]);
   }
   useEffect(() => {
     if (!playing) return;
@@ -83,17 +92,29 @@ export function App() {
 
   const [hidden, setHidden] = useState<ReadonlySet<Category>>(new Set());
 
-  const state = useMemo(() => project(events, asOf), [events, asOf]);
+  // A scenario can shorten the log (a company that hires too hard dies sooner),
+  // so the view date is clamped on every render rather than only on seed change.
+  const viewAt = clamp(asOf, first, last);
+
+  const state = useMemo(() => project(events, viewAt), [events, viewAt]);
   const series = useMemo(() => headcountSeries(events), [events]);
   // Folded once per company, then read by date — the same weekly reducer the
   // simulator ran on, so the panel cannot disagree with the generator.
   const financePoints = useMemo(() => financeSeries(events), [events]);
   const finance = useMemo(() => {
     for (let i = financePoints.length - 1; i >= 0; i--) {
-      if (financePoints[i].at <= asOf) return financePoints[i].finance;
+      if (financePoints[i].at <= viewAt) return financePoints[i].finance;
     }
     return emptyFinance();
-  }, [financePoints, asOf]);
+  }, [financePoints, viewAt]);
+
+  // Interventions fire on the next weekly tick, so step the view forward with
+  // them — otherwise staging a change appears to do nothing.
+  const stage = (plan: Intervention) => {
+    setScenario((current) => [...current, plan]);
+    setAsOf((current) => addDays(current, 7));
+    setPlaying(false);
+  };
   const names = useMemo(() => buildNameIndex(events), [events]);
   const visible = useMemo(
     () => events.filter((e) => !hidden.has(CATEGORY[e.type])),
@@ -157,6 +178,14 @@ export function App() {
         </div>
       </header>
 
+      <ScenarioBar
+        scenario={scenario}
+        state={state}
+        asOf={branchAt ?? asOf}
+        onClear={() => setScenario([])}
+        onRemove={(index) => setScenario((current) => current.filter((_, i) => i !== index))}
+      />
+
       <div className="filterbar">
         {(Object.keys(CATEGORY_LABELS) as Category[]).map((category) => (
           <button
@@ -181,7 +210,14 @@ export function App() {
         ref={columnsRef}
         style={{ '--panel-w': `${panelWidth}px` } as React.CSSProperties}
       >
-        <Timeline events={visible} names={names} asOf={asOf} playing={playing} onJump={setAsOf} />
+        <Timeline
+          events={visible}
+          names={names}
+          asOf={viewAt}
+          playing={playing}
+          branchAt={branchAt}
+          onJump={setAsOf}
+        />
         <div
           className="splitter"
           role="separator"
@@ -206,17 +242,22 @@ export function App() {
         />
         <OrgPanel
           // A different company gets a fresh panel: local view state (the
-          // hiring slider, the open person card) is about the old one.
+          // hire control, the open person card) is about the old one.
           key={deferredSeed}
           state={state}
           series={series}
           finance={finance}
-          asOf={asOf}
+          asOf={viewAt}
           first={first}
           last={last}
           today={TODAY}
           whatIfId={whatIfId}
           onWhatIf={setWhatIfId}
+          onHire={(func, count) => stage({ at: viewAt, kind: 'hire', func, count })}
+          onDepart={(personId) => {
+            stage({ at: viewAt, kind: 'depart', personId });
+            setWhatIfId(null);
+          }}
           onScrub={(date) => {
             setPlaying(false);
             setAsOf(clamp(date, first, last));

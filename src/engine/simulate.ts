@@ -45,7 +45,20 @@ export interface SimConfig {
    * size of the round decide the size of the team.
    */
   minRunwayWeeks?: number;
+  /**
+   * Counterfactual decisions injected into the run. They fire on the first
+   * tick at or after their date and go through the same hire/depart paths as
+   * organic events, so cascades, ids and team creation are handled for free —
+   * and because the RNG stream is shared, every event before the first
+   * intervention is identical to the unmodified run. The past is preserved;
+   * only the future branches.
+   */
+  interventions?: Intervention[];
 }
+
+export type Intervention =
+  | { at: IsoDate; kind: 'hire'; func: Func; count: number }
+  | { at: IsoDate; kind: 'depart'; personId: string };
 
 /**
  * Stage model calibrated against docs/research/org-realism.md (Carta/Kruze
@@ -213,6 +226,9 @@ export function simulate(config: SimConfig): OrgEvent[] {
     ctx.finance = financeAt(ctx.events, cursor)?.finance ?? emptyFinance();
   }
 
+  const interventions = [...(config.interventions ?? [])].sort((a, b) => a.at.localeCompare(b.at));
+  let nextIntervention = 0;
+
   let safety = 60 * 52;
   while (ctx.state.status === 'operating' && safety-- > 0) {
     cursor = addDays(cursor, 7);
@@ -220,6 +236,12 @@ export function simulate(config: SimConfig): OrgEvent[] {
     ctx.weeksInStage += 1;
     if (ctx.hiringFreezeWeeks > 0) ctx.hiringFreezeWeeks -= 1;
     if (ctx.postLayoffWeeks > 0) ctx.postLayoffWeeks -= 1;
+
+    // Deliberate decisions land before the organic week runs, and bypass the
+    // hiring freeze and runway gate — someone chose this.
+    while (nextIntervention < interventions.length && interventions[nextIntervention].at <= cursor) {
+      applyIntervention(ctx, interventions[nextIntervention++], cursor);
+    }
 
     runWeek(ctx, cursor, ambitionMul, turbulence, minRunwayWeeks);
 
@@ -232,6 +254,20 @@ export function simulate(config: SimConfig): OrgEvent[] {
   }
 
   return ctx.events;
+}
+
+function applyIntervention(ctx: SimCtx, plan: Intervention, at: IsoDate): void {
+  if (ctx.state.status !== 'operating') return;
+
+  if (plan.kind === 'hire') {
+    for (let i = 0; i < plan.count; i++) hireRegular(ctx, at, plan.func);
+    return;
+  }
+
+  const person = ctx.state.people[plan.personId];
+  // The founder never leaves, and someone already gone cannot leave twice.
+  if (!person || person.endedAt !== null || person.isFounder) return;
+  departPerson(ctx, at, person, 'laid-off');
 }
 
 /** One simulated week. Early returns here are why the caller closes the books. */
@@ -612,9 +648,9 @@ function maxIdSuffix(ids: string[], prefix: string): number {
   return max;
 }
 
-function hireRegular(ctx: SimCtx, at: IsoDate): void {
+function hireRegular(ctx: SimCtx, at: IsoDate, forcedFunc?: Func): void {
   const { rng, state } = ctx;
-  const func = rng.weighted(HIRE_MIX[ctx.stageIdx]);
+  const func = forcedFunc ?? rng.weighted(HIRE_MIX[ctx.stageIdx]);
   const title = pickTitle(ctx, func);
   const employment = pickEmployment(ctx, func);
   const teamId = ensureTeam(ctx, at, func);

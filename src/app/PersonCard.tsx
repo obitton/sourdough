@@ -17,6 +17,7 @@ interface Props {
   asOf: IsoDate;
   personId: string;
   onClose(): void;
+  onDepart(personId: string): void;
 }
 
 /** Only the factors that actually cost something are worth showing. */
@@ -39,7 +40,7 @@ function factorRows(
   return rows;
 }
 
-export function PersonCard({ state, finance, asOf, personId, onClose }: Props) {
+export function PersonCard({ state, finance, asOf, personId, onClose, onDepart }: Props) {
   const [showDeparture, setShowDeparture] = useState(false);
 
   const person = state.people[personId];
@@ -129,14 +130,21 @@ export function PersonCard({ state, finance, asOf, personId, onClose }: Props) {
           The founder never leaves in this model — see the known simplifications in the spec.
         </p>
       ) : (
-        <button
-          type="button"
-          className="departure-toggle"
-          aria-expanded={showDeparture}
-          onClick={() => setShowDeparture(!showDeparture)}
-        >
-          {showDeparture ? 'Hide departure impact' : 'Model their departure'}
-        </button>
+        <>
+          <button
+            type="button"
+            className="departure-toggle"
+            aria-expanded={showDeparture}
+            onClick={() => setShowDeparture(!showDeparture)}
+          >
+            {showDeparture ? 'Hide departure impact' : 'Model their departure'}
+          </button>
+          {showDeparture && (
+            <button type="button" className="departure-commit" onClick={() => onDepart(personId)}>
+              Let them go from {asOf} →
+            </button>
+          )}
+        </>
       )}
 
       {impact && (

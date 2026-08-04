@@ -127,10 +127,26 @@ only an acquisition ends it. `minRunwayWeeks` (18 months) is the binding
 constraint on hiring, which is what makes the size of the round decide the size
 of the team.
 
-Counterfactuals fall out for free: `withoutPerson` rebuilds the org as it would
-stand if someone left today — using the same reports-move-up cascade the
-simulator uses — so the UI can price a departure (capacity lost, load shift,
-reports reassigned, runway gained) without touching the event log.
+Counterfactuals fall out for free at two levels:
+
+- **Instant, no re-run.** `withoutPerson` rebuilds the org as it would stand if
+  someone left today — same reports-move-up cascade the simulator uses — so the
+  UI prices a departure (capacity lost, load shift, reports reassigned, runway
+  gained) without touching the log.
+- **Re-simulated.** `SimConfig.interventions` injects decisions into the run
+  itself: `{at, kind: 'hire', func, count}` or `{at, kind: 'depart', personId}`.
+  They fire on the first tick at or after their date and go through the
+  simulator's own `hireRegular` / `departPerson`, so ids, team creation, manager
+  assignment and departure cascades are handled by the same code as organic
+  events — every prefix stays valid by construction.
+
+The second one is the interesting one, and it is only cheap because the log is
+the truth. Since the RNG stream is shared, **every event before the first
+intervention is byte-identical to the baseline run**; only the future branches.
+That makes a scenario a genuine prediction rather than a preview: the added
+salaries raise burn, burn shortens runway, and a shorter runway changes who the
+company hires next — or whether it survives at all. Interventions deliberately
+bypass the hiring freeze and the runway floor, because someone *chose* this.
 
 ## 6. Stack
 

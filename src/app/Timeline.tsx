@@ -8,6 +8,8 @@ interface Props {
   names: NameIndex;
   asOf: IsoDate;
   playing: boolean;
+  /** Date the staged scenario diverges from the baseline run, if any. */
+  branchAt: IsoDate | null;
   onJump(date: IsoDate): void;
 }
 
@@ -28,9 +30,12 @@ function groupByMonth(events: readonly OrgEvent[]): MonthGroup[] {
   return groups;
 }
 
-export function Timeline({ events, names, asOf, playing, onJump }: Props) {
+export function Timeline({ events, names, asOf, playing, branchAt, onJump }: Props) {
   const groups = groupByMonth(events);
   const monthRefs = useRef(new Map<string, HTMLElement>());
+  // The first event the staged scenario could have touched — everything from
+  // here down was re-simulated rather than carried over from the baseline.
+  const branchSeq = branchAt === null ? null : (events.find((e) => e.at >= branchAt)?.seq ?? null);
 
   // Follow the playhead while playing; never hijack scroll while the user reads.
   const activeMonth = [...groups].reverse().find((g) => g.firstAt <= asOf)?.month;
@@ -53,6 +58,9 @@ export function Timeline({ events, names, asOf, playing, onJump }: Props) {
           <ol className="events">
             {group.events.map((event) => (
               <li key={event.seq}>
+                {event.seq === branchSeq && (
+                  <p className="branch-marker">⑂ scenario — re-simulated from here</p>
+                )}
                 <button
                   type="button"
                   className={`event ${event.at > asOf ? 'future' : ''} kind-${event.type}`}

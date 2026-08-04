@@ -11,5 +11,6 @@ export {
   type HeadcountPoint,
 } from './project';
 export { validateState, validateEvents } from './validate';
-export { simulate, type SimConfig } from './simulate';
+export { simulate, type SimConfig, type Intervention } from './simulate';
+export { HIRE_MIX, mixShare, stageIndexOf } from './mix';
 export { croutonConfig, randomConfig } from './presets';

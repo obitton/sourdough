@@ -13,7 +13,7 @@ import { croutonConfig, randomConfig } from './presets';
 import { activePeople, applyEvent, emptyState, project } from './project';
 import { simulate } from './simulate';
 import type { OrgEvent, Person } from './types';
-import { validateState } from './validate';
+import { validateEvents, validateState } from './validate';
 
 const UNTIL = '2036-01-01';
 
@@ -294,6 +294,98 @@ describe('the two sets of books agree', () => {
         if (project(events, point.at).latestRound !== null) break;
         expect(point.finance.capitalUsd, `boot-${i} @ ${point.at}`).toBe(0);
       }
+    }
+  });
+});
+
+describe('scenarios branch the future without rewriting the past', () => {
+  /**
+   * A living company with room left to run. Derived from each log rather than
+   * hardcoded, because a fixed date lands on a corpse for half the seeds and
+   * moves every time the engine changes.
+   */
+  function branchPoint(seed: string) {
+    const config = randomConfig(seed, UNTIL);
+    const baseline = simulate(config);
+    const at = baseline[Math.floor(baseline.length * 0.5)].at;
+    const state = project(baseline, at);
+    const alive = state.status === 'operating' && activePeople(state).length >= 5;
+    return alive && baseline.some((e) => e.at > at) ? { config, baseline, at, state } : null;
+  }
+
+  const cases = ['branch-0', 'branch-1', 'branch-2', 'branch-3', 'branch-4', 'branch-5']
+    .map(branchPoint)
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+
+  it('has usable fixtures', () => expect(cases.length).toBeGreaterThan(0));
+
+  it('keeps every event before the intervention identical', () => {
+    for (const { config, baseline, at } of cases) {
+      const branched = simulate({
+        ...config,
+        interventions: [{ at, kind: 'hire', func: 'engineering', count: 5 }],
+      });
+      // Same seed, same RNG draws up to the intervention: the shared prefix
+      // must be byte-identical, or "the past is preserved" is not a claim.
+      const before = (log: OrgEvent[]) => log.filter((e) => e.at < at);
+      expect(JSON.stringify(before(branched))).toEqual(JSON.stringify(before(baseline)));
+    }
+  });
+
+  it('actually changes the future', () => {
+    let changed = 0;
+
+    for (const { config, baseline, at } of cases) {
+      const branched = simulate({
+        ...config,
+        interventions: [{ at, kind: 'hire', func: 'engineering', count: 5 }],
+      });
+
+      const heads = (log: OrgEvent[]) =>
+        capacitySnapshot(project(log, at), at).byFunc.find((f) => f.func === 'engineering')!
+          .headcount;
+      // The hires are real headcount, not a projection.
+      expect(heads(branched)).toBeGreaterThan(heads(baseline));
+
+      const after = (log: OrgEvent[]) => JSON.stringify(log.filter((e) => e.at >= at));
+      if (after(branched) !== after(baseline)) changed += 1;
+    }
+
+    // Adding five engineers has to move at least one company's trajectory,
+    // or the intervention is decoration.
+    expect(changed).toBeGreaterThan(0);
+  });
+
+  it('produces a valid organisation, cascades and all', () => {
+    for (const { config, state, at } of cases) {
+      const victim = activePeople(state).find((p) => !p.isFounder);
+      if (!victim) continue;
+
+      const branched = simulate({
+        ...config,
+        interventions: [
+          { at, kind: 'hire', func: 'gtm', count: 3 },
+          { at, kind: 'depart', personId: victim.id },
+        ],
+      });
+
+      expect(validateEvents(branched)).toEqual([]);
+      const folded = emptyState();
+      for (const event of branched) {
+        applyEvent(folded, event);
+        expect(validateState(folded), `after seq ${event.seq}`).toEqual([]);
+      }
+    }
+  });
+
+  it('refuses to remove the founder', () => {
+    for (const { config, baseline, state, at } of cases) {
+      const founder = activePeople(state).find((p) => p.isFounder)!;
+      const branched = simulate({
+        ...config,
+        interventions: [{ at, kind: 'depart', personId: founder.id }],
+      });
+      expect(JSON.stringify(branched)).toEqual(JSON.stringify(baseline));
     }
   });
 });

@@ -61,7 +61,17 @@ acquisition rates, and the 12-month equity cliff showing up as a real spike in t
 histogram. Calibrating inputs and verifying outputs are not the same thing — writing the
 second suite is what surfaced the two bugs fixed in [§Decisions](#decisions-worth-knowing).
 
-**Bonus consequence: a whole business model with no new plumbing.** Capacity, burn,
+**Consequence one: scenarios are re-simulations, not previews.** Stage a decision — hire four
+into GTM, let someone go — and it is injected into the run as a real event at that date, then
+*the rest of the timeline is generated again from there*. Because the seed and RNG stream are
+shared, every event before the branch is byte-identical and only the future diverges. So the
+answer you get is the model's, with all its couplings intact: hiring four sellers relieved GTM
+from 164% to 148% load, pushed **engineering** from 113% to 145% (more people generate more
+work for everyone else), and cut runway from 16 months to 12. Stage several at once; they
+compose. In one run, hiring five GTM into a company with 16 months of runway killed it before
+its Series A.
+
+**Consequence two: a whole business model with no new plumbing.** Capacity, burn,
 revenue and runway are all *folds over the same log* ([metrics.ts](src/engine/metrics.ts)) —
 nothing about them is stored, and only one event type was added to build them. Because
 `stepFinance` is a second reducer shared by the generator and the UI, the simulator can make
@@ -77,8 +87,12 @@ counterfactuals are nearly free — click anyone in the org chart to price their
   possible future.
 - **Right:** the org as of the selected date — headcount sparkline (drag it to scrub), stage,
   office, team chips, runway/ARR/burn, per-function bandwidth, and the full reporting tree.
-  **Click anyone** to model losing them: capacity lost, where their reports land, what the
-  team's load becomes, and how much runway it buys.
+  **Click anyone** to see what they contribute — their effective capacity broken into the
+  factors that produced it (part-time, still ramping, management overhead) — and optionally to
+  model losing them.
+- **Change something:** hire into any function, or let someone go, from the selected date. The
+  staged decisions appear in a bar at the top and the timeline is re-simulated from the branch
+  point. "Reset to baseline" puts it back.
 - **Starter box:** `crouton` replays the real prologue from the take-home prompt, then
   simulates one possible future. Any other string bakes a fully synthetic company. 🎲 rolls
   a fresh one.

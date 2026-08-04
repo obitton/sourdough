@@ -2,6 +2,7 @@ import {
   activePeople,
   addDays,
   daysBetween,
+  type Func,
   type HeadcountPoint,
   type IsoDate,
   type OrgState,
@@ -24,6 +25,8 @@ interface Props {
   whatIfId: string | null;
   onScrub(date: IsoDate): void;
   onWhatIf(personId: string | null): void;
+  onHire(func: Func, count: number): void;
+  onDepart(personId: string): void;
 }
 
 const ROUND_LABELS: Record<string, string> = {
@@ -44,6 +47,8 @@ export function OrgPanel({
   whatIfId,
   onScrub,
   onWhatIf,
+  onHire,
+  onDepart,
 }: Props) {
   const people = activePeople(state);
   const total = Math.max(1, daysBetween(first, last));
@@ -116,7 +121,9 @@ export function OrgPanel({
         </ul>
       )}
 
-      {people.length > 0 && <MetricsPanel state={state} finance={finance} asOf={asOf} />}
+      {people.length > 0 && (
+        <MetricsPanel state={state} finance={finance} asOf={asOf} onHire={onHire} />
+      )}
 
       {whatIfId && (
         <PersonCard
@@ -126,6 +133,7 @@ export function OrgPanel({
           asOf={asOf}
           personId={whatIfId}
           onClose={() => onWhatIf(null)}
+          onDepart={onDepart}
         />
       )}
 

@@ -1,19 +1,14 @@
 import { useMemo, useState } from 'react';
-import type { IsoDate, OrgState } from '../engine';
+import type { Func, IsoDate, OrgState } from '../engine';
 import { formatMoney } from '../engine/describe';
-import {
-  capacitySnapshot,
-  hiringScenario,
-  orgStats,
-  runwayMonths,
-  type FinanceState,
-} from '../engine/metrics';
+import { capacitySnapshot, orgStats, runwayMonths, type FinanceState } from '../engine/metrics';
 import { FUNC_COLORS, formatLoad, formatMonths } from './meta';
 
 interface Props {
   state: OrgState;
   finance: FinanceState;
   asOf: IsoDate;
+  onHire(func: Func, count: number): void;
 }
 
 const FUNC_LABELS = {
@@ -32,17 +27,12 @@ function loadTone(load: number): 'ok' | 'warn' | 'over' {
 
 const months = formatMonths;
 
-export function MetricsPanel({ state, finance, asOf }: Props) {
-  const [multiplier, setMultiplier] = useState(1);
+export function MetricsPanel({ state, finance, asOf, onHire }: Props) {
+  const [func, setFunc] = useState<Func>('engineering');
+  const [count, setCount] = useState(1);
 
   const capacity = useMemo(() => capacitySnapshot(state, asOf), [state, asOf]);
   const stats = useMemo(() => orgStats(state, asOf), [state, asOf]);
-  const engineering = capacity.byFunc.find((f) => f.func === 'engineering')!;
-  const target = Math.max(1, Math.round(engineering.headcount * multiplier));
-  const scenario = useMemo(
-    () => hiringScenario(state, finance, asOf, target),
-    [state, finance, asOf, target],
-  );
   const runway = runwayMonths(finance);
 
   // Runway and burn describe a going concern; after the company ends they are
@@ -121,44 +111,37 @@ export function MetricsPanel({ state, finance, asOf }: Props) {
         hold — which is what a departure does to everyone left.
       </p>
 
-      {engineering.headcount > 0 && (
-        <>
-          <h3 className="metrics-heading">What if engineering were bigger?</h3>
+      <h3 className="metrics-heading">Change something</h3>
+      <div className="hire-control">
+        <label>
+          <span className="sr-only">how many</span>
           <input
-            type="range"
+            type="number"
             min={1}
-            max={5}
-            step={0.5}
-            value={multiplier}
-            onChange={(e) => setMultiplier(Number(e.target.value))}
-            aria-label="engineering headcount multiplier"
+            max={25}
+            value={count}
+            onChange={(e) => setCount(Math.max(1, Math.min(25, Number(e.target.value) || 1)))}
           />
-          <div className="scenario">
-            <div>
-              <span className="scenario-value">{target}</span>
-              <span className="scenario-label">engineers</span>
-            </div>
-            <div>
-              <span className="scenario-value">{scenario.capacity.toFixed(1)}</span>
-              <span className="scenario-label">capacity</span>
-            </div>
-            <div>
-              <span className={`scenario-value ${scenario.runwayMonths < 9 ? 'danger' : ''}`}>
-                {months(scenario.runwayMonths)}
-              </span>
-              <span className="scenario-label">runway mo</span>
-            </div>
-            <div>
-              <span className="scenario-value">{formatMoney(scenario.monthlyBurnUsd)}</span>
-              <span className="scenario-label">burn /mo</span>
-            </div>
-          </div>
-          <p className="metrics-caption">
-            Priced at this team's own average of {scenario.capacityPerEngineer.toFixed(2)} effective
-            output per engineer — ramp-up and management overhead already included.
-          </p>
-        </>
-      )}
+        </label>
+        <label>
+          <span className="sr-only">which function</span>
+          <select value={func} onChange={(e) => setFunc(e.target.value as Func)}>
+            {(Object.keys(FUNC_LABELS) as Func[]).map((f) => (
+              <option key={f} value={f}>
+                {FUNC_LABELS[f]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" onClick={() => onHire(func, count)}>
+          Hire from {asOf}
+        </button>
+      </div>
+      <p className="metrics-caption">
+        Not a preview — the hire is replayed into the simulation and the rest of the timeline is
+        re-run from that date. Their salary hits burn, burn shortens runway, and a shorter
+        runway changes who the company hires next.
+      </p>
 
       {stats.largestTeam && (
         <ul className="org-stats">
