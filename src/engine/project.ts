@@ -8,6 +8,7 @@ export function emptyState(): OrgState {
     latestRound: null,
     status: 'operating',
     endedAt: null,
+    defaultAlive: false,
     people: {},
     teams: {},
   };
@@ -91,6 +92,9 @@ export function applyEvent(state: OrgState, event: OrgEvent): void {
     }
     case 'layoff-round':
       break; // summary marker; the individual departures carry the state change
+    case 'default-alive':
+      state.defaultAlive = true;
+      break;
     case 'office-moved':
       state.city = event.toCity;
       break;

@@ -12,10 +12,11 @@ the simulated work system with knowable ground truth.
 | Path | Purpose |
 |------|---------|
 | `src/engine/` | Pure TypeScript simulation — no React, no I/O, no wall clock |
-| `src/engine/types.ts` | **The contract**: 13-type event union + projected state types |
+| `src/engine/types.ts` | **The contract**: 14-type event union + projected state types |
 | `src/engine/simulate.ts` | Weekly-tick generator (stage machine, hiring, attrition, endings) |
 | `src/engine/project.ts` | The one reducer; `project(events, until)` = org as of a date |
 | `src/engine/validate.ts` | Realism invariants (singleton execs, acyclic chains, …) |
+| `src/engine/metrics.ts` | Derived capacity + finances; `stepFinance` is the second reducer |
 | `src/engine/describe.ts` | Reference English per event (shared web + CLI) |
 | `src/app/` | React UI: `App` (state) → `Timeline`, `OrgPanel`, `Sparkline` |
 | `scripts/peek.ts` | Terminal timeline viewer |

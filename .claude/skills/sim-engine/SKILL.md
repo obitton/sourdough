@@ -46,6 +46,24 @@ invariants test folds every prefix, so ordering mistakes fail loudly and immedia
 - `FUNC_LEADER_TITLES` order encodes seniority (first = most senior); `funcLeader()` relies
   on it for manager assignment.
 
+## The second reducer
+
+`metrics.ts` derives capacity and money from the same log — nothing is stored. Two entry
+points must stay paired: `applyFinanceEvent` (capital from `funding-raised`) and
+`stepFinance` (one week of burn and revenue). The simulator calls both as it ticks; the UI
+calls both via `financeSeries`. **Never advance the books in only one of those paths** — the
+whole point is that the generator decides on numbers the panel can reproduce.
+
+Consequences to preserve when editing `simulate.ts`:
+- Insolvency ends a funded company (`capitalUsd <= 0`), checked before every other branch.
+  Pre-funding companies keep a time fuse because the model does not track founder savings.
+- `onRunwayClock()` gates every death path. A company that is not burning cash cannot die of
+  a failed raise or a restructuring — only an acquisition ends it.
+- `minRunwayWeeks` gates hiring and is the real cap on team size. Changing it moves every
+  calibration band; re-sweep before committing.
+- `default-alive` requires revenue within 40% of covering burn *and* the rate roll. Without
+  the coverage gate a company with no GTM could "turn the corner" on luck alone.
+
 ## Calibration
 
 Stage targets, attrition curve, layoff sizes, promotion cadence all cite

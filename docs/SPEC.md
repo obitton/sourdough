@@ -61,13 +61,13 @@ reconstruction scored against the truth. That's the difference between "fake dat
 
 ## 4. Event taxonomy
 
-13 types, one discriminated union (`src/engine/types.ts`):
+14 types, one discriminated union (`src/engine/types.ts`):
 
 | Category | Events |
 |---|---|
 | people | `person-hired`, `person-departed`, `person-promoted`, `employment-changed` |
 | structure | `team-created`, `team-changed`, `manager-changed` |
-| company | `company-founded`, `funding-raised`, `layoff-round`, `office-moved`, `company-shutdown`, `company-acquired` |
+| company | `company-founded`, `funding-raised`, `layoff-round`, `default-alive`, `office-moved`, `company-shutdown`, `company-acquired` |
 
 Conventions:
 - `seq` strictly increasing; `at` (ISO date) non-decreasing.
@@ -95,6 +95,39 @@ Hard invariants (`validate.ts`), checked in tests for **every prefix** of 40+ se
 
 Dev builds re-validate every generated history and `console.warn` on violation — belt and
 braces on top of the suite.
+
+## 5b. Capacity and money (`metrics.ts`)
+
+Headcount is a poor proxy for what an org can actually do, and Crouton's own
+product tracks allocation and capacity rather than just roster. So the engine
+derives two more layers — **neither of which adds an event type**:
+
+- **Capacity.** Each active person contributes effective person-weeks, discounted
+  for employment type (part-time 0.5), ramp-up (~12 weeks to full productivity)
+  and management overhead (~6%/report, floored). `load = demand / capacity` per
+  function; above 1.0 the team is carrying more than it can hold. This is what
+  makes a departure legible: the work does not leave with the person, so the same
+  demand lands on a smaller team and load jumps.
+- **Money.** Capital accrues from `funding-raised` events and drains by weekly
+  payroll; ARR is driven by GTM capacity, capped by what a team of that size can
+  carry, and churned. Runway = capital / net burn.
+
+`stepFinance` is a **second reducer**, and it obeys the same rule as `applyEvent`:
+the simulator advances the books with it each tick, and the UI folds the log with
+it via `financeSeries`. They cannot disagree, which is why the simulator can make
+life-or-death decisions on numbers the panel renders.
+
+That coupling is load-bearing. Insolvency — not a timer — is what ends a funded
+company, so a team that hires hard genuinely dies sooner. Conversely a company
+earning more than it spends cannot be killed by a failed raise or a restructuring;
+only an acquisition ends it. `minRunwayWeeks` (18 months) is the binding
+constraint on hiring, which is what makes the size of the round decide the size
+of the team.
+
+Counterfactuals fall out for free: `withoutPerson` rebuilds the org as it would
+stand if someone left today — using the same reports-move-up cascade the
+simulator uses — so the UI can price a departure (capacity lost, load shift,
+reports reassigned, runway gained) without touching the event log.
 
 ## 6. Stack
 

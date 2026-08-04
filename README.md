@@ -61,13 +61,24 @@ acquisition rates, and the 12-month equity cliff showing up as a real spike in t
 histogram. Calibrating inputs and verifying outputs are not the same thing — writing the
 second suite is what surfaced the two bugs fixed in [§Decisions](#decisions-worth-knowing).
 
+**Bonus consequence: a whole business model with no new plumbing.** Capacity, burn,
+revenue and runway are all *folds over the same log* ([metrics.ts](src/engine/metrics.ts)) —
+nothing about them is stored, and only one event type was added to build them. Because
+`stepFinance` is a second reducer shared by the generator and the UI, the simulator can make
+decisions on the exact numbers the panel renders: **running out of money, not a timer, is what
+ends a funded company**, so a team that hires hard genuinely dies sooner, and a company earning
+more than it spends can't be killed by a failed raise. And since state is derived,
+counterfactuals are nearly free — click anyone in the org chart to price their departure.
+
 ## What you're looking at
 
 - **Left:** the timeline — every event, grouped by month, filterable by category. Click any
   event to jump the org view to that date. Events beyond the scrubber are ghosted: one
   possible future.
 - **Right:** the org as of the selected date — headcount sparkline (drag it to scrub), stage,
-  office, team chips, and the full reporting tree.
+  office, team chips, runway/ARR/burn, per-function bandwidth, and the full reporting tree.
+  **Click anyone** to model losing them: capacity lost, where their reports land, what the
+  team's load becomes, and how much runway it buys.
 - **Starter box:** `crouton` replays the real prologue from the take-home prompt, then
   simulates one possible future. Any other string bakes a fully synthetic company. 🎲 rolls
   a fresh one.
@@ -81,6 +92,7 @@ src/engine/     pure TypeScript, no React, no I/O — the whole simulation
   simulate.ts     weekly-tick generator: stage machine, hiring, attrition, endings
   project.ts      the one reducer; fold events → org state at any date
   validate.ts     realism invariants (state + event-stream)
+  metrics.ts      derived capacity + finances; stepFinance is the second reducer
   describe.ts     reference English for each event (shared by web + CLI)
   presets.ts      the real-Crouton prologue + synthetic-company configs
   rng.ts dates.ts names.ts
@@ -110,6 +122,11 @@ docs/research/org-realism.md   the benchmarks every calibration constant cites
   meant the single company whose real history can be checked was also the one the model was
   tilted toward. It now runs on the same neutral defaults as every synthetic seed, and gets
   whatever future the model actually predicts.
+- **Hiring is budgeted against runway, which is what caps team size.** Not the stage target —
+  a req that would leave under 18 months of cash doesn't get approved, so the size of the round
+  decides the size of the team. The 18-month figure is the standard rule of thumb, and was
+  swept against the calibration bands before being adopted: under ~15 months companies die too
+  fast, over ~21 they never staff up.
 - **Calibration assertions are bands, not point values.** Changing how many times the RNG is
   drawn reshuffles every downstream outcome, so a statistic like "share of endings that are
   acquisitions" moves several points between builds without the model changing at all. The

@@ -68,6 +68,8 @@ export function describe(event: OrgEvent, names: NameIndex): string {
       break;
     case 'layoff-round':
       return `Layoff round: ${event.count} ${event.count === 1 ? 'person' : 'people'} (${event.pct}%).`;
+    case 'default-alive':
+      return `Revenue covers burn at ${formatMoney(event.arrUsd)} ARR — the company is default alive.`;
     case 'office-moved':
       return `The company relocated from ${event.fromCity} to ${event.toCity}.`;
     case 'company-shutdown':

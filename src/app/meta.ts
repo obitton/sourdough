@@ -13,6 +13,7 @@ export const CATEGORY: Record<EventType, Category> = {
   'company-founded': 'company',
   'funding-raised': 'company',
   'layoff-round': 'company',
+  'default-alive': 'company',
   'office-moved': 'company',
   'company-shutdown': 'company',
   'company-acquired': 'company',
@@ -35,10 +36,15 @@ export const ICONS: Record<EventType, string> = {
   'employment-changed': '⏫',
   'person-departed': '👋',
   'layoff-round': '📉',
+  'default-alive': '🌤️',
   'office-moved': '📦',
   'company-shutdown': '🕯️',
   'company-acquired': '🎉',
 };
+
+/** Runway past about five years is not a number anyone plans against. */
+export const formatMonths = (value: number): string =>
+  value === Infinity ? '∞' : value > 60 ? '60+' : Math.round(value).toString();
 
 /** Validated with the dataviz palette checker against the dark surface. */
 export const FUNC_COLORS: Record<PersonFunc, string> = {

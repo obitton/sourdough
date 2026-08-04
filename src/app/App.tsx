@@ -8,8 +8,10 @@ import {
   simulate,
   validateEvents,
   validateState,
+  type IsoDate,
 } from '../engine';
 import { buildNameIndex } from '../engine/describe';
+import { emptyFinance, financeSeries } from '../engine/metrics';
 import { CATEGORY, CATEGORY_LABELS, type Category } from './meta';
 import { OrgPanel } from './OrgPanel';
 import { Timeline } from './Timeline';
@@ -22,7 +24,9 @@ const STARTERS = [
   'ciabatta-9', 'boule-77', 'miche', 'pumpernickel-3', 'focaccia-12',
 ];
 
-const clamp = (value: string, min: string, max: string) =>
+// ISO dates are zero-padded and big-endian, so lexicographic order is
+// chronological order and a plain string compare is a date compare.
+const clamp = (value: IsoDate, min: IsoDate, max: IsoDate): IsoDate =>
   value < min ? min : value > max ? max : value;
 
 export function App() {
@@ -51,11 +55,14 @@ export function App() {
 
   // Render-time reset when a different company arrives — an effect here would
   // commit one throwaway frame of the new company at the old date.
+  const [whatIfId, setWhatIfId] = useState<string | null>(null);
+
   const [shownSeed, setShownSeed] = useState(deferredSeed);
   if (shownSeed !== deferredSeed) {
     setShownSeed(deferredSeed);
     setAsOf(clamp(TODAY, first, last));
     setPlaying(false);
+    setWhatIfId(null);
   }
   useEffect(() => {
     if (!playing) return;
@@ -70,6 +77,15 @@ export function App() {
 
   const state = useMemo(() => project(events, asOf), [events, asOf]);
   const series = useMemo(() => headcountSeries(events), [events]);
+  // Folded once per company, then read by date — the same weekly reducer the
+  // simulator ran on, so the panel cannot disagree with the generator.
+  const financePoints = useMemo(() => financeSeries(events), [events]);
+  const finance = useMemo(() => {
+    for (let i = financePoints.length - 1; i >= 0; i--) {
+      if (financePoints[i].at <= asOf) return financePoints[i].finance;
+    }
+    return emptyFinance();
+  }, [financePoints, asOf]);
   const names = useMemo(() => buildNameIndex(events), [events]);
   const visible = useMemo(
     () => events.filter((e) => !hidden.has(CATEGORY[e.type])),
@@ -157,10 +173,13 @@ export function App() {
         <OrgPanel
           state={state}
           series={series}
+          finance={finance}
           asOf={asOf}
           first={first}
           last={last}
           today={TODAY}
+          whatIfId={whatIfId}
+          onWhatIf={setWhatIfId}
           onScrub={(date) => {
             setPlaying(false);
             setAsOf(clamp(date, first, last));

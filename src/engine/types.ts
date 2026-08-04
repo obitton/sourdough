@@ -91,6 +91,16 @@ export interface LayoffRound extends BaseEvent {
   pct: number;
 }
 
+/**
+ * Revenue covers burn: the company is off the fundraising clock. A milestone
+ * rather than a derived reading, because it changes how the company behaves —
+ * and because a fold of the log has to be able to reproduce it.
+ */
+export interface DefaultAlive extends BaseEvent {
+  type: 'default-alive';
+  arrUsd: number;
+}
+
 export interface OfficeMoved extends BaseEvent {
   type: 'office-moved';
   fromCity: string;
@@ -119,6 +129,7 @@ export type OrgEvent =
   | EmploymentChanged
   | PersonDeparted
   | LayoffRound
+  | DefaultAlive
   | OfficeMoved
   | CompanyShutdown
   | CompanyAcquired;
@@ -165,6 +176,8 @@ export interface OrgState {
   latestRound: Round | null;
   status: CompanyStatus;
   endedAt: IsoDate | null;
+  /** Revenue covers burn — no longer running on a runway clock. */
+  defaultAlive: boolean;
   people: Record<string, Person>;
   teams: Record<string, Team>;
 }

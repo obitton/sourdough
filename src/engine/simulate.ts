@@ -1,4 +1,11 @@
 import { addDays, weeksBetween } from './dates';
+import {
+  applyFinanceEvent,
+  emptyFinance,
+  financeAt,
+  stepFinance,
+  type FinanceState,
+} from './metrics';
 import { ACQUIRERS, CITIES, FIRST_NAMES, LAST_NAMES, TEAM_NAMES } from './names';
 import { activePeople, applyEvent, emptyState, headcount } from './project';
 import { createRng, type Rng } from './rng';
@@ -31,6 +38,12 @@ export interface SimConfig {
   ambition?: number;
   /** 0..1 — attrition, layoff and failure risk. Default 0.5. */
   turbulence?: number;
+  /**
+   * Runway a company insists on keeping before it will open a new role.
+   * This, not the stage target, is what usually caps team size: it makes the
+   * size of the round decide the size of the team.
+   */
+  minRunwayWeeks?: number;
 }
 
 /**
@@ -118,8 +131,8 @@ interface SimCtx {
   /** Weeks left in the elevated-attrition window a layoff leaves behind. */
   postLayoffWeeks: number;
   downturnsThisStage: number;
-  /** Reached self-sustaining revenue: no longer on a runway clock. */
-  defaultAlive: boolean;
+  /** The books, advanced every tick by the same reducer the UI folds with. */
+  finance: FinanceState;
   hasRelocated: boolean;
   windDownAt: IsoDate | null;
   lastRaiseAmount: number;
@@ -130,6 +143,12 @@ export function simulate(config: SimConfig): OrgEvent[] {
   const ambition = config.ambition ?? 0.5;
   const turbulence = config.turbulence ?? 0.5;
   const ambitionMul = 0.75 + ambition * 0.5;
+  // 18 months — the standard rule of thumb for how much runway to hold. A req
+  // that would push the company under it is one nobody approves. Swept against
+  // the calibration bands: below ~65 weeks companies die too fast (median
+  // shutdown under 20 months), above ~91 they never staff up (median headcount
+  // at the seed round falls to 3, under Carta's 4–6).
+  const minRunwayWeeks = config.minRunwayWeeks ?? 78;
 
   const ctx: SimCtx = {
     rng,
@@ -145,7 +164,7 @@ export function simulate(config: SimConfig): OrgEvent[] {
     hiringFreezeWeeks: 0,
     postLayoffWeeks: 0,
     downturnsThisStage: 0,
-    defaultAlive: false,
+    finance: emptyFinance(),
     hasRelocated: false,
     windDownAt: null,
     lastRaiseAmount: 0,
@@ -188,12 +207,19 @@ export function simulate(config: SimConfig): OrgEvent[] {
   ctx.stageIdx = STAGES.findIndex((s) => s.round === ctx.state.latestRound);
   if (ctx.stageIdx === -1) ctx.stageIdx = 0;
   ctx.weeksInStage = Math.max(0, weeksBetween(lastRaiseAt, cursor));
+  // A scripted prologue still spent money. Replay the books across it through
+  // the same fold the UI uses, so simulation resumes on a real balance sheet
+  // rather than on the full round as if no time had passed.
+  if (ctx.events.length > 0) {
+    ctx.finance = financeAt(ctx.events, cursor)?.finance ?? emptyFinance();
+  }
 
   let safety = 60 * 52;
   while (ctx.state.status === 'operating' && safety-- > 0) {
     cursor = addDays(cursor, 7);
     if (cursor > config.until) break;
     ctx.weeksInStage += 1;
+    ctx.finance = stepFinance(ctx.finance, ctx.state, cursor);
     if (ctx.hiringFreezeWeeks > 0) ctx.hiringFreezeWeeks -= 1;
     if (ctx.postLayoffWeeks > 0) ctx.postLayoffWeeks -= 1;
 
@@ -208,7 +234,7 @@ export function simulate(config: SimConfig): OrgEvent[] {
     if (ctx.state.status !== 'operating' || ctx.windDownAt !== null) continue;
     stepExecHires(ctx, cursor);
     stepAppointedLeads(ctx, cursor);
-    stepHiring(ctx, cursor, ambitionMul);
+    stepHiring(ctx, cursor, ambitionMul, minRunwayWeeks);
     stepAttrition(ctx, cursor, turbulence);
     stepPromotions(ctx, cursor);
     stepConversions(ctx, cursor);
@@ -222,13 +248,40 @@ export function simulate(config: SimConfig): OrgEvent[] {
 // Weekly steps
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether the company still depends on someone else's money. A business
+ * spending less than it earns cannot run out of cash, so no failed raise and
+ * no restructuring can end it — only an acquisition can.
+ */
+function onRunwayClock(ctx: SimCtx): boolean {
+  return !ctx.state.defaultAlive && ctx.finance.netBurnWeeklyUsd > 0;
+}
+
 function stepFundraising(ctx: SimCtx, at: IsoDate, ambitionMul: number, turbulence: number): void {
   const stage = STAGES[ctx.stageIdx];
   const lastStage = ctx.stageIdx === STAGES.length - 1;
 
+  // Running out of money is the actual failure mode, so the balance sheet
+  // decides rather than a timer: a company that hires hard burns its round
+  // faster and dies sooner, which is the whole reason burn is modeled. This
+  // is checked before every other branch because insolvency ends a company at
+  // any stage, including past the last modeled round.
+  // Before the first round there is no tracked capital — a bootstrapped
+  // company is spending the founder's own savings, which the model does not
+  // hold — so that one case keeps a time fuse.
+  if (!ctx.state.defaultAlive) {
+    const brokeAfterRaise = ctx.state.latestRound !== null && ctx.finance.capitalUsd <= 0;
+    const bootstrapRanLong =
+      ctx.state.latestRound === null && ctx.weeksInStage > stage.minWeeksToNext + 110;
+    if (brokeAfterRaise || bootstrapRanLong) {
+      beginWindDown(ctx, at);
+      return;
+    }
+  }
+
   // Off the fundraising treadmill — past the last modeled round, or running on
   // its own revenue — but still acquirable.
-  if (lastStage || ctx.defaultAlive) {
+  if (lastStage || ctx.state.defaultAlive) {
     if (ctx.rng.chance(0.0008)) acquire(ctx, at);
     if (lastStage || ctx.state.status !== 'operating') return;
   }
@@ -242,15 +295,18 @@ function stepFundraising(ctx: SimCtx, at: IsoDate, ambitionMul: number, turbulen
   // Rate is derived, not tuned: a stalled company is eligible for the ~110
   // weeks between its raise window opening and the runway running out, and we
   // want ~1 in 3 of them to make it — 1-(1-p)^110 = 0.33 → p ≈ 0.004.
-  if (ctx.weeksInStage > stage.minWeeksToNext && ctx.rng.chance(0.004)) {
-    ctx.defaultAlive = true;
-  }
-
-  // A company that overstays its runway winds down (research: shutdown lands
-  // 24–42 months after the last raise).
-  if (!ctx.defaultAlive && ctx.weeksInStage > stage.minWeeksToNext + 110) {
-    beginWindDown(ctx, at);
-    return;
+  // Turning the corner requires revenue to turn from. A company with no sales
+  // engine does not become default alive by luck, so eligibility needs the
+  // books to be within reach of covering burn first.
+  const coverage =
+    ctx.finance.burnWeeklyUsd > 0 ? ctx.finance.arrUsd / 52 / ctx.finance.burnWeeklyUsd : 0;
+  if (
+    !ctx.state.defaultAlive &&
+    coverage >= 0.4 &&
+    ctx.weeksInStage > stage.minWeeksToNext &&
+    ctx.rng.chance(0.004)
+  ) {
+    emit(ctx, { type: 'default-alive', at, arrUsd: Math.round(ctx.finance.arrUsd) });
   }
 
   if (ctx.weeksInStage < stage.minWeeksToNext) return;
@@ -260,10 +316,15 @@ function stepFundraising(ctx: SimCtx, at: IsoDate, ambitionMul: number, turbulen
   const death = stage.gateDeathChance * (0.5 + turbulence);
   const roll = ctx.rng.next();
   if (roll < death) {
-    // ~30% of failed raises end in an acqui-hire soft landing rather than a
-    // shutdown, keeping acquisitions ~25–35% of endings (org-realism.md).
-    if (ctx.rng.chance(0.3)) acquire(ctx, at);
-    else beginWindDown(ctx, at);
+    // A company that does not need the money does not die for missing it, and
+    // is not an acqui-hire either: failing to raise with years of cash left
+    // just means no round this time. Only a company actually out of options
+    // reaches the fork, where ~30% land softly as an acqui-hire rather than
+    // shutting down (org-realism.md).
+    if (onRunwayClock(ctx)) {
+      if (ctx.rng.chance(0.3)) acquire(ctx, at);
+      else beginWindDown(ctx, at);
+    }
   } else if (roll < death + stage.gateAcquireChance) {
     acquire(ctx, at);
   } else {
@@ -316,8 +377,13 @@ function stepDownturn(ctx: SimCtx, at: IsoDate, turbulence: number): void {
   // roughly half of all tech layoffs come from repeat-cutters), and ~5% of them
   // reach a third. Compounding odds, rather than a hard rule, keeps survivors
   // in the population — a company that cuts twice and lives is a real shape.
+  // A company that earns more than it spends restructures rather than folds —
+  // cutting twice is a survival move when it works, so solvency gets the last
+  // word here just as it does on the fundraising path.
   const windDownChance = ctx.downturnsThisStage >= 3 ? 0.8 : ctx.downturnsThisStage >= 2 ? 0.45 : 0;
-  if (windDownChance > 0 && ctx.rng.chance(windDownChance)) beginWindDown(ctx, at);
+  if (windDownChance > 0 && ctx.rng.chance(windDownChance) && onRunwayClock(ctx)) {
+    beginWindDown(ctx, at);
+  }
 }
 
 function stepExecHires(ctx: SimCtx, at: IsoDate): void {
@@ -433,8 +499,14 @@ function stepAppointedLeads(ctx: SimCtx, at: IsoDate): void {
   }
 }
 
-function stepHiring(ctx: SimCtx, at: IsoDate, ambitionMul: number): void {
+function stepHiring(ctx: SimCtx, at: IsoDate, ambitionMul: number, minRunwayWeeks: number): void {
   if (ctx.hiringFreezeWeeks > 0) return;
+  // Nobody signs off on a req that leaves the company short of cash. Once the
+  // plan is funded this is the binding constraint, not the stage target — and
+  // it is why hiring slows on its own as a round is spent down.
+  if (ctx.state.latestRound !== null && !ctx.state.defaultAlive) {
+    if (ctx.finance.runwayWeeks < minRunwayWeeks) return;
+  }
   const stage = STAGES[ctx.stageIdx];
   const gap = stage.target * ambitionMul - headcount(ctx.state);
   if (gap <= 0) return;
@@ -509,6 +581,7 @@ function stepRelocation(ctx: SimCtx, at: IsoDate): void {
 function emit(ctx: SimCtx, scripted: ScriptedEvent): void {
   const event: OrgEvent = { ...scripted, seq: ctx.seq++ };
   applyEvent(ctx.state, event);
+  ctx.finance = applyFinanceEvent(ctx.finance, event);
   ctx.events.push(event);
 }
 

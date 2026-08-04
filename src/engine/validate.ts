@@ -88,6 +88,7 @@ export function validateEvents(events: readonly OrgEvent[]): string[] {
   const hired = new Set<string>();
   const departed = new Set<string>();
   const createdTeams = new Set<string>();
+  let sawDefaultAlive = false;
   let prevSeq = -1;
   let prevAt = '';
 
@@ -101,6 +102,11 @@ export function validateEvents(events: readonly OrgEvent[]): string[] {
 
     const personId =
       'personId' in event ? event.personId : event.type === 'company-founded' ? event.founderId : null;
+
+    if (event.type === 'default-alive') {
+      if (sawDefaultAlive) problems.push(`company reached default-alive twice (seq ${event.seq})`);
+      sawDefaultAlive = true;
+    }
 
     if (event.type === 'team-created') {
       if (createdTeams.has(event.teamId)) problems.push(`team ${event.teamId} created twice`);

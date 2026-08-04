@@ -7,17 +7,23 @@ import {
   type OrgState,
   type Person,
 } from '../engine';
-import { FUNC_COLORS } from './meta';
+import { formatMoney } from '../engine/describe';
+import { departureImpact, type FinanceState } from '../engine/metrics';
+import { FUNC_COLORS, formatMonths } from './meta';
+import { MetricsPanel } from './MetricsPanel';
 import { Sparkline } from './Sparkline';
 
 interface Props {
   state: OrgState;
   series: HeadcountPoint[];
+  finance: FinanceState;
   asOf: IsoDate;
   first: IsoDate;
   last: IsoDate;
   today: IsoDate;
+  whatIfId: string | null;
   onScrub(date: IsoDate): void;
+  onWhatIf(personId: string | null): void;
 }
 
 const ROUND_LABELS: Record<string, string> = {
@@ -27,9 +33,21 @@ const ROUND_LABELS: Record<string, string> = {
   'series-b': 'Series B',
 };
 
-export function OrgPanel({ state, series, asOf, first, last, today, onScrub }: Props) {
+export function OrgPanel({
+  state,
+  series,
+  finance,
+  asOf,
+  first,
+  last,
+  today,
+  whatIfId,
+  onScrub,
+  onWhatIf,
+}: Props) {
   const people = activePeople(state);
   const total = Math.max(1, daysBetween(first, last));
+  const impact = whatIfId ? departureImpact(state, asOf, whatIfId, finance) : null;
 
   const byManager = new Map<string, Person[]>();
   for (const person of people) {
@@ -99,36 +117,110 @@ export function OrgPanel({ state, series, asOf, first, last, today, onScrub }: P
         </ul>
       )}
 
+      {people.length > 0 && <MetricsPanel state={state} finance={finance} asOf={asOf} />}
+
+      {impact && (
+        <div className="whatif" role="status">
+          <div className="whatif-head">
+            <strong>If {impact.name} left today</strong>
+            <button type="button" className="linkish" onClick={() => onWhatIf(null)}>
+              clear
+            </button>
+          </div>
+          <ul>
+            <li>
+              <span>{impact.func === 'leadership' ? 'company' : impact.func} load</span>
+              <strong>
+                {Math.round(impact.loadBefore * 100)}% → {Math.round(impact.loadAfter * 100)}%
+              </strong>
+            </li>
+            <li>
+              <span>capacity lost</span>
+              <strong>{impact.capacityLost.toFixed(2)} people</strong>
+            </li>
+            {impact.reportsMoved > 0 && (
+              <li>
+                <span>reports reassigned</span>
+                <strong>
+                  {impact.reportsMoved} → {impact.newManagerName ?? 'nobody'}
+                </strong>
+              </li>
+            )}
+            <li>
+              <span>payroll saved</span>
+              <strong>{formatMoney(impact.monthlySavingUsd)}/mo</strong>
+            </li>
+            <li>
+              <span>runway</span>
+              <strong>
+                {formatMonths(impact.runwayMonthsBefore)} → {formatMonths(impact.runwayMonthsAfter)} mo
+              </strong>
+            </li>
+          </ul>
+        </div>
+      )}
+
       <div className="org-tree">
         {roots.length === 0 ? (
           <p className="muted">Nobody here yet — scrub forward.</p>
         ) : (
-          <ul>
-            {roots.map((person) => (
-              <TreeNode key={person.id} person={person} byManager={byManager} />
-            ))}
-          </ul>
+          <>
+            <p className="metrics-caption">Click anyone to model their departure.</p>
+            <ul>
+              {roots.map((person) => (
+                <TreeNode
+                  key={person.id}
+                  person={person}
+                  byManager={byManager}
+                  whatIfId={whatIfId}
+                  onWhatIf={onWhatIf}
+                />
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </aside>
   );
 }
 
-function TreeNode({ person, byManager }: { person: Person; byManager: Map<string, Person[]> }) {
+function TreeNode({
+  person,
+  byManager,
+  whatIfId,
+  onWhatIf,
+}: {
+  person: Person;
+  byManager: Map<string, Person[]>;
+  whatIfId: string | null;
+  onWhatIf(personId: string | null): void;
+}) {
   const reports = byManager.get(person.id) ?? [];
+  const selected = whatIfId === person.id;
   return (
     <li>
-      <div className="node">
+      <button
+        type="button"
+        className={`node ${selected ? 'node-selected' : ''}`}
+        aria-pressed={selected}
+        onClick={() => onWhatIf(selected ? null : person.id)}
+      >
         <span className="dot" style={{ background: FUNC_COLORS[person.func] }} aria-hidden />
         <span className="node-name">{person.name}</span>
         <span className="node-title">{person.title}</span>
         {person.employment !== 'full-time' && <span className="badge">{person.employment}</span>}
         {reports.length > 0 && <span className="badge badge-count">{reports.length} ↓</span>}
-      </div>
+      </button>
       {reports.length > 0 && (
         <ul>
           {reports.map((report) => (
-            <TreeNode key={report.id} person={report} byManager={byManager} />
+            <TreeNode
+              key={report.id}
+              person={report}
+              byManager={byManager}
+              whatIfId={whatIfId}
+              onWhatIf={onWhatIf}
+            />
           ))}
         </ul>
       )}
