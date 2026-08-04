@@ -114,14 +114,26 @@ export function PersonCard({ state, finance, asOf, personId, onClose, onDepart }
         {factorRows(breakdown, reports).length === 0 ? (
           <p className="metrics-caption">Fully ramped, full-time, no management overhead.</p>
         ) : (
-          <ul className="factors">
-            {factorRows(breakdown, reports).map((row) => (
-              <li key={row.label}>
-                <span>{row.label}</span>
-                <strong>×{row.value.toFixed(2)}</strong>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="factors">
+              {factorRows(breakdown, reports).map((row) => (
+                <li key={row.label}>
+                  <span>{row.label}</span>
+                  <strong>×{row.value.toFixed(2)}</strong>
+                </li>
+              ))}
+            </ul>
+            {/* The factors multiply — without this line the total reads as
+                unexplained ("where does 0.35 come from?"). */}
+            {factorRows(breakdown, reports).length >= 2 && (
+              <p className="factors-math">
+                {factorRows(breakdown, reports)
+                  .map((row) => row.value.toFixed(2))
+                  .join(' × ')}{' '}
+                = {breakdown.total.toFixed(2)}
+              </p>
+            )}
+          </>
         )}
       </div>
 
