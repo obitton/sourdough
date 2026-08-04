@@ -19,11 +19,10 @@ the simulated work system with knowable ground truth.
 | `src/engine/metrics.ts` | Derived capacity + finances; `stepFinance` is the second reducer |
 | `src/engine/mix.ts` | Stage hiring mix — shared by the simulator and the demand model |
 | `src/engine/describe.ts` | Reference English per event (shared web + CLI) |
-| `src/app/` | React UI: `App` (state) → `Timeline`, `OrgPanel`, `Sparkline` |
+| `src/app/` | React UI: `App` (state) → `Timeline`, `OrgPanel` (→ `MetricsPanel`, `PersonCard`), `ScenarioBar`, `Sparkline` |
 | `scripts/peek.ts` | Terminal timeline viewer |
 | `docs/SPEC.md` | Vision, architecture, roadmap, known simplifications |
 | `docs/research/org-realism.md` | Published benchmarks every calibration constant cites |
-| `docs/research/` (rest) | **Gitignored** local prep — never commit |
 
 ## Commands
 
@@ -71,8 +70,9 @@ seed → simulate(config) → OrgEvent[] → project(events, asOf)     → OrgSt
                               └→ headcountSeries / describe()    → sparkline / timeline
 ```
 
-UI state is exactly: `seedInput`, `asOf`, `playing`, `hidden` (filter set). Everything else
-is `useMemo` off `events`.
+UI state is: `seedInput`, `asOf`, `playing`, `hidden` (filters), `scenario` (staged
+interventions), `whatIfId` (selected person), and `panelWidth`. Everything else is `useMemo`
+off `events`.
 
 ## Context docs
 

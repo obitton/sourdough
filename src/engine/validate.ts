@@ -4,8 +4,8 @@ import type { OrgEvent, OrgState, Person } from './types';
 /**
  * Realism invariants. This is the direct answer to "if we run it and there's
  * seven CTOs, that doesn't make sense" — the simulator is written to never
- * violate these, and the test suite folds thousands of generated histories
- * through them to prove it.
+ * violate these, and the test suite folds every prefix of every generated
+ * history through them to prove it.
  */
 
 /** Titles at most one active person may hold at a time. */

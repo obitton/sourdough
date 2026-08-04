@@ -1,10 +1,10 @@
 # 🍞 Sourdough
 
-**A seeded organization simulator.** Feed it a starter, watch a company rise — or collapse.
+**A seeded organization simulator.** Feed it a starter, watch a company rise (or collapse).
 
 Sourdough generates the complete, event-by-event history of a fictional startup: founding,
-funding, hiring, team formation, promotions, reorgs, departures, layoffs, and — because most
-startups don't make it — acquisition or shutdown. You can replay that history on a timeline,
+funding, hiring, team formation, promotions, reorgs, departures, layoffs, and, because most
+startups don't make it, acquisition or shutdown. You can replay that history on a timeline,
 scrub to any date, and see exactly what the org looked like at that moment.
 
 Built for the Crouton take-home. Crouton reconstructs an organization's history from work
@@ -26,7 +26,7 @@ npm run peek       # the same simulator, printed to your terminal
 npm run peek -- rye-7 2035-01-01   # any seed, any horizon
 ```
 
-## Three ideas and a consequence
+## Three ideas and two consequences
 
 **1. Events are the only source of truth.** The simulator emits a typed event log
 ([types.ts](src/engine/types.ts)); everything else — the org chart, headcount, team rosters,
@@ -48,9 +48,9 @@ failures, so there are two suites.
 
 *Structural:* a validator ([validate.ts](src/engine/validate.ts)) enforces hard invariants —
 singleton executive titles, no orphaned reports, acyclic reporting chains that always reach
-the founder, no events for departed people — and the tests fold thousands of generated
-histories through it, requiring **every prefix** of every log to be a valid organization, not
-just the end state.
+the founder, no events for departed people — and the tests fold every prefix of dozens of
+generated histories (thousands of intermediate org states) through it: a log must be a valid
+organization at every point in time, not just at the end.
 
 *Statistical:* every calibration constant traces to published benchmarks
 ([docs/research/org-realism.md](docs/research/org-realism.md) — Carta/Kruze medians for

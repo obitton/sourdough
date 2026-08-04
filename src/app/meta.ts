@@ -56,7 +56,7 @@ export const formatMonths = (value: number): string =>
 export const formatLoad = (load: number, headcount: number): string =>
   headcount === 0 ? 'unstaffed' : `${Math.round(load * 100)}%`;
 
-/** Validated with the dataviz palette checker against the dark surface. */
+/** Checked colorblind-safe and ≥3:1 contrast against the dark background. */
 export const FUNC_COLORS: Record<PersonFunc, string> = {
   engineering: '#4E86E0',
   design: '#D45E9F',

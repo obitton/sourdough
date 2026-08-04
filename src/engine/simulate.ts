@@ -786,9 +786,9 @@ function pickTitle(ctx: SimCtx, func: Func): string {
 }
 
 function pickEmployment(ctx: SimCtx, func: Func): Employment {
-  // Research: ~20% of the early-stage workforce is contract/part-time —
-  // concentrated in design and GTM (see: Griffin, part-time growth) but
-  // present in every function.
+  // Research: ~20% of the early-stage workforce is contract or part-time
+  // (org-realism.md §7), concentrated in design and GTM but present in every
+  // function.
   const early = ctx.stageIdx <= 2;
   const soft = func === 'design' || func === 'gtm';
   if (early && soft && ctx.rng.chance(0.25)) return 'part-time';

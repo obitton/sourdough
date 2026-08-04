@@ -67,7 +67,7 @@ Consequences to preserve when editing `simulate.ts`:
 ## Calibration
 
 Stage targets, attrition curve, layoff sizes, promotion cadence all cite
-`docs/research/org-realism.md` (local, gitignored). When tuning: change the constant, update
+`docs/research/org-realism.md`. When tuning: change the constant, update
 its comment's rationale, re-run `npm test` — the outcome-spread test (`some seeds die, some
 thrive, nobody hits 250 heads`) is the guardrail against drift into fantasy.
 

@@ -79,7 +79,7 @@ Conventions:
 ## 5. Realism model
 
 The generator is a stage machine calibrated to published data (sources in
-`docs/research/org-realism.md`, local): headcount targets per stage (~2 → 6 → 17 → 50 → 110),
+`docs/research/org-realism.md`): headcount targets per stage (~2 → 6 → 17 → 50 → 110),
 rounds ~20–28 months apart, gate rolls at each raise (fail → wind-down; small chance →
 acquired), attrition ~19% annualized shaped by tenure (the post-equity-cliff spike at weeks
 52–78), layoff rounds of 10–30% (median 15%) with a hiring freeze, exec sequencing (CTO at
@@ -156,7 +156,7 @@ bypass the hiring freeze and the runway floor, because someone *chose* this.
 | Vite + React | Crouton's own toolchain; instant feedback loop |
 | Vitest | shares the Vite pipeline; the suite is the realism argument |
 | No Postgres (yet) | state is derivable from the log, the log from the seed; a DB adds setup friction with zero payoff at 600 events. The schema is append-only and Postgres-shaped for when persistence earns its keep (§7) |
-| No component/chart/CSS libs | ~1,600 lines total, every one explainable in an interview |
+| No component/chart/CSS libs | the sparkline is ~60 lines of hand-drawn SVG, the org chart a nested list; nothing in the repo is a black box |
 
 ## 7. Roadmap (deliberately not built yet)
 
