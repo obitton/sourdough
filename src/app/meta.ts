@@ -43,8 +43,18 @@ export const ICONS: Record<EventType, string> = {
 };
 
 /** Runway past about five years is not a number anyone plans against. */
+export const RUNWAY_CAP_MONTHS = 60;
+
 export const formatMonths = (value: number): string =>
-  value === Infinity ? '∞' : value > 60 ? '60+' : Math.round(value).toString();
+  value === Infinity ? '∞' : value > RUNWAY_CAP_MONTHS ? '60+' : Math.round(value).toString();
+
+/**
+ * A function with work waiting and nobody to do it has an infinite load, which
+ * is true and useless. Every view formats load through here so no panel can
+ * render `Infinity%` again.
+ */
+export const formatLoad = (load: number, headcount: number): string =>
+  headcount === 0 ? 'unstaffed' : `${Math.round(load * 100)}%`;
 
 /** Validated with the dataviz palette checker against the dark surface. */
 export const FUNC_COLORS: Record<PersonFunc, string> = {

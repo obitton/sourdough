@@ -7,11 +7,13 @@ import {
   hiringScenario,
   personCapacity,
   weeklyBurn,
+  withoutPerson,
 } from './metrics';
 import { croutonConfig, randomConfig } from './presets';
-import { applyEvent, emptyState, project } from './project';
+import { activePeople, applyEvent, emptyState, project } from './project';
 import { simulate } from './simulate';
 import type { OrgEvent, Person } from './types';
+import { validateState } from './validate';
 
 const UNTIL = '2036-01-01';
 
@@ -71,26 +73,35 @@ describe('capacity', () => {
 
 describe('a departure redistributes work onto whoever is left', () => {
   it('drops the team capacity and raises its load', () => {
-    const events = simulate(randomConfig('load-3', UNTIL));
-    const state = emptyState();
     let checked = 0;
 
-    for (const event of events) {
-      if (event.type === 'person-departed' && state.people[event.personId]?.func === 'engineering') {
-        const before = capacitySnapshot(state, event.at).byFunc.find((f) => f.func === 'engineering')!;
-        applyEvent(state, event);
-        const after = capacitySnapshot(state, event.at).byFunc.find((f) => f.func === 'engineering')!;
+    // Scan seeds rather than pinning one: which company has a mid-life
+    // engineering departure shifts every time the model changes.
+    for (let s = 0; s < 12 && checked < 3; s++) {
+      const events = simulate(randomConfig(`load-${s}`, UNTIL));
+      const state = emptyState();
 
-        if (before.headcount > 1 && after.headcount > 0) {
-          expect(after.capacity).toBeLessThan(before.capacity);
-          // The work does not leave with them: the same demand now sits on a
-          // smaller team, which is what "their work got redistributed" means.
-          expect(after.load).toBeGreaterThan(before.load);
-          checked += 1;
+      for (const event of events) {
+        if (event.type === 'person-departed' && state.people[event.personId]?.func === 'engineering') {
+          const pick = (at: string) =>
+            capacitySnapshot(state, at).byFunc.find((f) => f.func === 'engineering')!;
+          const before = pick(event.at);
+          applyEvent(state, event);
+          const after = pick(event.at);
+
+          if (before.headcount > 1 && after.headcount > 0) {
+            expect(after.capacity).toBeLessThan(before.capacity);
+            // Some of their work leaves with them — one fewer head generates
+            // less — but a departing engineer takes far more capacity than
+            // demand, so the remaining team ends up carrying more each. That
+            // gap is what "their work got redistributed" actually means.
+            expect(after.load).toBeGreaterThan(before.load);
+            checked += 1;
+          }
+          continue;
         }
-        continue;
+        applyEvent(state, event);
       }
-      applyEvent(state, event);
     }
 
     expect(checked).toBeGreaterThan(0);
@@ -144,6 +155,10 @@ describe('the generator and the UI read the same books', () => {
       const events: OrgEvent[] = simulate(randomConfig(`drift-${i}`, UNTIL));
       const shutdown = events.find((e) => e.type === 'company-shutdown');
       if (!shutdown) continue;
+      // A company that never raised has no tracked payroll at all (the model
+      // does not follow the founder's savings), so it always reads as costing
+      // nothing. Its death is the bootstrap fuse, not insolvency.
+      if (!events.some((e) => e.type === 'funding-raised')) continue;
 
       // Measured over the wind-down window, not at the shutdown date itself:
       // by then the team has already been let go, so burn is ~0 and every
@@ -196,6 +211,90 @@ describe('the generator and the UI read the same books', () => {
     }
 
     expect(checked).toBeGreaterThan(0);
+  });
+});
+
+describe('counterfactuals stay valid organisations', () => {
+  it('leaves a legal org behind when anyone but the founder departs', () => {
+    let checked = 0;
+
+    for (const seed of ['cf-1', 'cf-2', 'cf-3', 'cf-4', 'cf-5']) {
+      const events = simulate(randomConfig(seed, UNTIL));
+      // Mid-log, so the company is populated whatever its lifespan turned out
+      // to be — a fixed date lands on a corpse for half the seeds.
+      const at = events[Math.floor(events.length * 0.6)].at;
+      const state = project(events, at);
+
+      for (const person of activePeople(state)) {
+        if (person.isFounder) continue;
+        const after = withoutPerson(state, at, person.id);
+        expect(validateState(after), `${seed} without ${person.name}`).toEqual([]);
+        checked += 1;
+      }
+    }
+
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('does not pretend a founder-less org is valid', () => {
+    // The founder never leaves in this model, so the UI must not offer it —
+    // this test documents why rather than asserting the broken shape is fine.
+    let checked = 0;
+
+    for (let i = 0; i < 8 && checked === 0; i++) {
+      const events = simulate(randomConfig(`cf-${i}`, UNTIL));
+      const at = events[Math.floor(events.length * 0.6)].at;
+      const state = project(events, at);
+      // Must be operating: the validator's singleton-CEO rule only applies to
+      // a live company, so a wound-down org would pass vacuously.
+      if (state.status !== 'operating') continue;
+      const founder = activePeople(state).find((p) => p.isFounder);
+      if (!founder) continue;
+
+      expect(validateState(withoutPerson(state, at, founder.id)).length).toBeGreaterThan(0);
+      checked += 1;
+    }
+
+    expect(checked).toBeGreaterThan(0);
+  });
+});
+
+describe('the two sets of books agree', () => {
+  /**
+   * The simulator winds a funded company down the week its capital hits zero.
+   * So if the UI's independent fold ever shows a *surviving* funded company
+   * insolvent, the two have drifted — the generator would have killed it.
+   * Wind-down weeks are excluded: the company keeps paying people on the way
+   * out, which legitimately takes capital negative.
+   */
+  it('never shows a living funded company as insolvent', () => {
+    let weeks = 0;
+
+    for (let i = 0; i < 15; i++) {
+      const events = simulate(randomConfig(`agree-${i}`, UNTIL));
+      const shutdown = events.find((e) => e.type === 'company-shutdown');
+      const cutoff = shutdown ? addDays(shutdown.at, -15 * 7) : null;
+
+      for (const point of financeSeries(events)) {
+        if (cutoff && point.at >= cutoff) break;
+        const state = project(events, point.at);
+        if (state.latestRound === null || state.defaultAlive) continue;
+        expect(point.finance.capitalUsd, `agree-${i} @ ${point.at}`).toBeGreaterThan(-1);
+        weeks += 1;
+      }
+    }
+
+    expect(weeks).toBeGreaterThan(0);
+  });
+
+  it('never lets a pre-round company owe money it is not tracking', () => {
+    for (let i = 0; i < 15; i++) {
+      const events = simulate(randomConfig(`boot-${i}`, UNTIL));
+      for (const point of financeSeries(events)) {
+        if (project(events, point.at).latestRound !== null) break;
+        expect(point.finance.capitalUsd, `boot-${i} @ ${point.at}`).toBe(0);
+      }
+    }
   });
 });
 

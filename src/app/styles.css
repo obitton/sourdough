@@ -381,7 +381,7 @@ input[type='range'] {
 
 /* ---------- what-if ---------- */
 
-.whatif {
+.person-card {
   background: var(--panel-2);
   border: 1px solid var(--accent);
   border-radius: 8px;
@@ -393,13 +393,57 @@ input[type='range'] {
   justify-content: space-between;
   align-items: baseline;
   gap: 8px;
-  margin-bottom: 6px;
-  font-size: 13px;
+  font-size: 14px;
 }
-.whatif ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
-.whatif li { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
-.whatif span { color: var(--muted); }
-.whatif strong { font-variant-numeric: tabular-nums; font-weight: 550; }
+.person-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.person-facts,
+.factors,
+.whatif-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+.person-facts li,
+.factors li,
+.whatif-rows li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+.person-facts span,
+.factors span,
+.whatif-rows span { color: var(--muted); }
+.person-facts strong,
+.factors strong,
+.whatif-rows strong { font-variant-numeric: tabular-nums; font-weight: 550; }
+
+.contribution {
+  margin: 10px 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border);
+}
+.contribution-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 5px; }
+.contribution-value { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.contribution-label { color: var(--muted); font-size: 11.5px; }
+
+.departure-toggle {
+  width: 100%;
+  margin-top: 8px;
+  padding: 5px;
+  font-size: 12px;
+}
+.whatif-rows { margin-top: 8px; }
 
 /* ---------- org tree ---------- */
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { IsoDate, OrgState } from '../engine';
 import { formatMoney } from '../engine/describe';
 import {
@@ -8,7 +8,7 @@ import {
   runwayMonths,
   type FinanceState,
 } from '../engine/metrics';
-import { FUNC_COLORS, formatMonths } from './meta';
+import { FUNC_COLORS, formatLoad, formatMonths } from './meta';
 
 interface Props {
   state: OrgState;
@@ -35,23 +35,32 @@ const months = formatMonths;
 export function MetricsPanel({ state, finance, asOf }: Props) {
   const [multiplier, setMultiplier] = useState(1);
 
-  const capacity = capacitySnapshot(state, asOf);
-  const stats = orgStats(state, asOf);
+  const capacity = useMemo(() => capacitySnapshot(state, asOf), [state, asOf]);
+  const stats = useMemo(() => orgStats(state, asOf), [state, asOf]);
   const engineering = capacity.byFunc.find((f) => f.func === 'engineering')!;
   const target = Math.max(1, Math.round(engineering.headcount * multiplier));
-  const scenario = hiringScenario(state, finance, asOf, target);
+  const scenario = useMemo(
+    () => hiringScenario(state, finance, asOf, target),
+    [state, finance, asOf, target],
+  );
   const runway = runwayMonths(finance);
+
+  // Runway and burn describe a going concern; after the company ends they are
+  // just the last reading before the lights went out.
+  const ended = state.endedAt !== null && state.endedAt <= asOf;
 
   return (
     <section className="metrics" aria-label="capacity and finances">
       <dl className="money">
-        <div>
-          <dt>runway</dt>
-          <dd className={runway !== Infinity && runway < 9 ? 'danger' : ''}>
-            {months(runway)}
-            <span className="unit">{runway === Infinity ? '' : ' mo'}</span>
-          </dd>
-        </div>
+        {!ended && (
+          <div>
+            <dt>runway</dt>
+            <dd className={runway !== Infinity && runway < 9 ? 'danger' : ''}>
+              {months(runway)}
+              <span className="unit">{runway === Infinity ? '' : ' mo'}</span>
+            </dd>
+          </div>
+        )}
         <div>
           <dt>ARR</dt>
           <dd>{formatMoney(finance.arrUsd)}</dd>
@@ -60,10 +69,15 @@ export function MetricsPanel({ state, finance, asOf }: Props) {
           <dt>in bank</dt>
           <dd>{formatMoney(Math.max(0, finance.capitalUsd))}</dd>
         </div>
-        <div>
-          <dt>{finance.netBurnWeeklyUsd > 0 ? 'net burn' : 'net margin'}</dt>
-          <dd>{formatMoney(Math.abs(finance.netBurnWeeklyUsd) * 4.345)}<span className="unit"> /mo</span></dd>
-        </div>
+        {!ended && (
+          <div>
+            <dt>{finance.netBurnWeeklyUsd > 0 ? 'net burn' : 'net margin'}</dt>
+            <dd>
+              {formatMoney(Math.abs(finance.netBurnWeeklyUsd) * 4.345)}
+              <span className="unit"> /mo</span>
+            </dd>
+          </div>
+        )}
       </dl>
 
       <h3 className="metrics-heading">
@@ -96,7 +110,7 @@ export function MetricsPanel({ state, finance, asOf }: Props) {
                   />
                 </span>
                 <span className={f.headcount === 0 ? 'bw-load muted' : `bw-load tone-${tone}`}>
-                  {f.headcount === 0 ? 'none' : `${Math.round(f.load * 100)}%`}
+                  {formatLoad(f.load, f.headcount)}
                 </span>
               </li>
             );

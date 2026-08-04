@@ -1,4 +1,5 @@
 import { addDays, weeksBetween } from './dates';
+import { mixShare } from './mix';
 import { activePeople, applyEvent, emptyState } from './project';
 import type { Func, IsoDate, OrgEvent, OrgState, Person, PersonFunc } from './types';
 
@@ -39,10 +40,12 @@ export interface MetricsModel {
   /** Capacity a founder/exec contributes as an individual contributor. */
   leadershipIcFactor: number;
   /**
-   * Work each headcount generates for a function, in effective person-weeks.
-   * Calibrated so a team staffed at its target mix sits near load 1.0.
+   * Work one head generates, in effective person-weeks, split across functions
+   * by the stage's hiring mix. Below 1.0 because average capacity per head is
+   * ~0.85–0.9 once ramp, part-time and management drag are counted — a company
+   * staffed at its target mix should sit near load 1.0, not permanently over.
    */
-  demandPerHead: Record<Func, number>;
+  demandIntensity: number;
   /** New ARR one effective GTM person-week closes. */
   arrPerGtmWeekUsd: number;
   /** Revenue a team can carry per head before delivery capacity binds. */
@@ -76,7 +79,7 @@ export const DEFAULT_MODEL: MetricsModel = {
   managementCostPerReport: 0.06,
   managementFloor: 0.35,
   leadershipIcFactor: 0.4,
-  demandPerHead: { engineering: 0.38, design: 0.09, gtm: 0.3, operations: 0.13 },
+  demandIntensity: 0.9,
   // A quota-carrying seller closes ~$600K ARR/year ≈ $11.5K per person-week.
   arrPerGtmWeekUsd: 11_500,
   // Revenue per employee for private startups clusters near $130K; the public
@@ -105,6 +108,8 @@ export interface CapacitySnapshot {
   byFunc: FunctionCapacity[];
   totalCapacity: number;
   totalHeadcount: number;
+  /** Heads that generate function work — everyone but leadership. */
+  demandHeadcount: number;
   /** Capacity lost to management overhead and unfinished ramp-up. */
   overheadLoss: number;
 }
@@ -122,18 +127,56 @@ function reportCounts(state: OrgState): Map<string, number> {
  * part-time, with six reports is not one unit of engineering — and the gap
  * between headcount and capacity is the entire point of the metric.
  */
+export interface CapacityBreakdown {
+  /** The product of the factors below — what the person is actually worth. */
+  total: number;
+  employment: number;
+  ramp: number;
+  management: number;
+  ic: number;
+  tenureWeeks: number;
+  /** Weeks until fully ramped; 0 once there. */
+  rampWeeksLeft: number;
+}
+
+/** The same computation as `personCapacity`, with its factors kept visible. */
+export function personCapacityBreakdown(
+  person: Person,
+  at: IsoDate,
+  reports: number,
+  model: MetricsModel = DEFAULT_MODEL,
+): CapacityBreakdown {
+  const employment = model.employmentFactor[person.employment];
+  const tenureWeeks = Math.max(0, weeksBetween(person.startedAt, at));
+  const ramp = Math.min(
+    1,
+    model.rampFloor + (1 - model.rampFloor) * (tenureWeeks / model.rampWeeks),
+  );
+  const management = Math.max(model.managementFloor, 1 - model.managementCostPerReport * reports);
+  const ic = person.func === 'leadership' ? model.leadershipIcFactor : 1;
+  return {
+    total: employment * ramp * management * ic,
+    employment,
+    ramp,
+    management,
+    ic,
+    tenureWeeks,
+    rampWeeksLeft: Math.max(0, Math.ceil(model.rampWeeks - tenureWeeks)),
+  };
+}
+
 export function personCapacity(
   person: Person,
   at: IsoDate,
   reports: number,
   model: MetricsModel = DEFAULT_MODEL,
 ): number {
-  const employment = model.employmentFactor[person.employment];
-  const tenure = Math.max(0, weeksBetween(person.startedAt, at));
-  const ramp = Math.min(1, model.rampFloor + (1 - model.rampFloor) * (tenure / model.rampWeeks));
-  const management = Math.max(model.managementFloor, 1 - model.managementCostPerReport * reports);
-  const ic = person.func === 'leadership' ? model.leadershipIcFactor : 1;
-  return employment * ramp * management * ic;
+  return personCapacityBreakdown(person, at, reports, model).total;
+}
+
+/** How many people report to each active person — shared by several readings. */
+export function reportCountsOf(state: OrgState): Map<string, number> {
+  return reportCounts(state);
 }
 
 export function capacitySnapshot(
@@ -148,21 +191,28 @@ export function capacitySnapshot(
   const capacityByFunc = new Map<Func, number>(funcs.map((f) => [f, 0]));
   const headByFunc = new Map<Func, number>(funcs.map((f) => [f, 0]));
   let totalCapacity = 0;
-  let headcountForDemand = 0;
+  // Leadership generates no function work and belongs to no function, so it
+  // sits outside the demand base — otherwise a founder is a third of a
+  // three-person company's workload and every small team reads as drowning.
+  let demandHeadcount = 0;
 
   for (const person of people) {
     const capacity = personCapacity(person, at, counts.get(person.id) ?? 0, model);
     totalCapacity += capacity;
-    headcountForDemand += 1;
     if (person.func === 'leadership') continue;
+    demandHeadcount += 1;
     const func = person.func as Func;
     capacityByFunc.set(func, capacityByFunc.get(func)! + capacity);
     headByFunc.set(func, headByFunc.get(func)! + 1);
   }
 
+  // Demand follows the stage's own hiring mix, so a pre-seed company is not
+  // charged a Series-A company's sales workload.
+  const mix = mixShare(state.latestRound);
+
   const byFunc = funcs.map((func) => {
     const capacity = capacityByFunc.get(func)!;
-    const demand = model.demandPerHead[func] * headcountForDemand;
+    const demand = mix[func] * demandHeadcount * model.demandIntensity;
     return {
       func,
       headcount: headByFunc.get(func)!,
@@ -178,6 +228,7 @@ export function capacitySnapshot(
     byFunc,
     totalCapacity,
     totalHeadcount: people.length,
+    demandHeadcount,
     overheadLoss: people.length - totalCapacity,
   };
 }
@@ -207,19 +258,35 @@ export function emptyFinance(): FinanceState {
   };
 }
 
+/**
+ * One person's fully-loaded annual cost. The only place a person is priced —
+ * `weeklyBurn` and the UI both call it, so a card can never quote a salary the
+ * burn model isn't charging.
+ */
+export function personAnnualCost(
+  person: Person,
+  state: OrgState,
+  model: MetricsModel = DEFAULT_MODEL,
+): number {
+  const factor = person.employment === 'part-time' ? 0.5 : 1;
+  if (person.isFounder) {
+    // Founders take equity, not salary, until there is outside money to pay one
+    // from, and stay well under market until an A.
+    if (state.latestRound === null) return 0;
+    const preSeriesA = state.latestRound === 'pre-seed' || state.latestRound === 'seed';
+    return (preSeriesA ? model.founderSalaryEarlyUsd : model.salaryUsd.leadership) * factor;
+  }
+  return model.salaryUsd[person.func] * factor;
+}
+
 export function weeklyBurn(state: OrgState, model: MetricsModel = DEFAULT_MODEL): number {
-  const preSeriesA = state.latestRound === null || state.latestRound === 'pre-seed' || state.latestRound === 'seed';
+  // Before the first round the company runs on the founder's own savings,
+  // which this model does not track — so there is no payroll to charge and no
+  // capital to charge it against.
+  if (state.latestRound === null) return 0;
   let annual = 0;
   for (const person of activePeople(state)) {
-    const factor = person.employment === 'part-time' ? 0.5 : 1;
-    if (person.isFounder) {
-      // Founders take equity, not salary, until there is outside money to pay
-      // one from, and stay well under market until an A.
-      if (state.latestRound === null) continue;
-      annual += (preSeriesA ? model.founderSalaryEarlyUsd : model.salaryUsd.leadership) * factor;
-      continue;
-    }
-    annual += model.salaryUsd[person.func] * factor;
+    annual += personAnnualCost(person, state, model);
   }
   return annual / 52;
 }
@@ -242,9 +309,11 @@ export function stepFinance(
   state: OrgState,
   at: IsoDate,
   model: MetricsModel = DEFAULT_MODEL,
+  /** Pass the week's snapshot when the caller already has one. */
+  precomputed?: CapacitySnapshot,
 ): FinanceState {
   const burnWeeklyUsd = weeklyBurn(state, model);
-  const capacity = capacitySnapshot(state, at, model);
+  const capacity = precomputed ?? capacitySnapshot(state, at, model);
   const gtm = capacity.byFunc.find((f) => f.func === 'gtm')!.capacity;
 
   const churnWeekly = model.annualChurn / 52;
@@ -302,7 +371,9 @@ export function financeSeries(
   let finance = emptyFinance();
   const points: FinancePoint[] = [];
 
-  const end = until && until < events[events.length - 1].at ? until : events[events.length - 1].at;
+  // Walk to `until` even when it runs past the last event: a company still
+  // burns during the quiet weeks, and the simulator resumes from this value.
+  const end = until ?? events[events.length - 1].at;
   let cursor = events[0].at;
   let index = 0;
 
@@ -312,8 +383,9 @@ export function financeSeries(
       applyEvent(state, event);
       finance = applyFinanceEvent(finance, event);
     }
-    finance = stepFinance(finance, state, cursor, model);
-    points.push({ at: cursor, finance, capacity: capacitySnapshot(state, cursor, model) });
+    const capacity = capacitySnapshot(state, cursor, model);
+    finance = stepFinance(finance, state, cursor, model, capacity);
+    points.push({ at: cursor, finance, capacity });
     cursor = addDays(cursor, 7);
   }
 
@@ -372,7 +444,8 @@ export function hiringScenario(
 
   // Demand rises with the bigger company too — hiring engineers does not only
   // add supply, it adds the coordination work that comes with more people.
-  const demand = model.demandPerHead.engineering * (snapshot.totalHeadcount + added);
+  const demand =
+    mixShare(state.latestRound).engineering * (snapshot.demandHeadcount + added) * model.demandIntensity;
 
   return {
     targetEngineers,
@@ -397,8 +470,15 @@ export interface DepartureImpact {
   func: PersonFunc;
   /** Effective person-weeks the team loses. */
   capacityLost: number;
-  loadBefore: number;
-  loadAfter: number;
+  /**
+   * The departing person's own function. Null for leadership, who belong to no
+   * function — a company-wide load would be a metric shown nowhere else, so
+   * the view omits the row rather than inventing one.
+   */
+  loadBefore: number | null;
+  loadAfter: number | null;
+  headcountBefore: number | null;
+  headcountAfter: number | null;
   reportsMoved: number;
   newManagerName: string | null;
   monthlySavingUsd: number;
@@ -457,8 +537,10 @@ export function departureImpact(
     title: person.title,
     func: person.func,
     capacityLost: beforeSnapshot.totalCapacity - afterSnapshot.totalCapacity,
-    loadBefore: pick(beforeSnapshot)?.load ?? 0,
-    loadAfter: pick(afterSnapshot)?.load ?? 0,
+    loadBefore: pick(beforeSnapshot)?.load ?? null,
+    loadAfter: pick(afterSnapshot)?.load ?? null,
+    headcountBefore: pick(beforeSnapshot)?.headcount ?? null,
+    headcountAfter: pick(afterSnapshot)?.headcount ?? null,
     reportsMoved: activePeople(state).filter((p) => p.managerId === personId).length,
     newManagerName: person.managerId ? (state.people[person.managerId]?.name ?? null) : null,
     monthlySavingUsd: (burnBefore - burnAfter) * 4.345,

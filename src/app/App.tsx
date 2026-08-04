@@ -171,6 +171,9 @@ export function App() {
       <main className="columns">
         <Timeline events={visible} names={names} asOf={asOf} playing={playing} onJump={setAsOf} />
         <OrgPanel
+          // A different company gets a fresh panel: local view state (the
+          // hiring slider, the open person card) is about the old one.
+          key={deferredSeed}
           state={state}
           series={series}
           finance={finance}

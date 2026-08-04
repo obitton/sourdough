@@ -21,11 +21,16 @@ export function buildNameIndex(events: readonly OrgEvent[]): NameIndex {
 }
 
 export function formatMoney(amountUsd: number): string {
-  if (amountUsd >= 1_000_000) {
-    const millions = amountUsd / 1_000_000;
-    return `$${millions % 1 === 0 ? millions : millions.toFixed(1)}M`;
+  // Signed and sub-thousand values reach this from the metrics panel, where
+  // "$0K" for a real number and "$-250K" for a debt both read as bugs.
+  const sign = amountUsd < 0 ? '-' : '';
+  const value = Math.abs(amountUsd);
+  if (value >= 1_000_000) {
+    const millions = value / 1_000_000;
+    return `${sign}$${millions % 1 === 0 ? millions : millions.toFixed(1)}M`;
   }
-  return `$${Math.round(amountUsd / 1_000)}K`;
+  if (value < 1_000) return `${sign}$${Math.round(value)}`;
+  return `${sign}$${Math.round(value / 1_000)}K`;
 }
 
 const ROUND_LABELS = {

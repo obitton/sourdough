@@ -1,4 +1,4 @@
-import { addDays, weeksBetween } from './dates';
+import { addDays, daysBetween, weeksBetween } from './dates';
 import {
   applyFinanceEvent,
   emptyFinance,
@@ -6,6 +6,7 @@ import {
   stepFinance,
   type FinanceState,
 } from './metrics';
+import { HIRE_MIX } from './mix';
 import { ACQUIRERS, CITIES, FIRST_NAMES, LAST_NAMES, TEAM_NAMES } from './names';
 import { activePeople, applyEvent, emptyState, headcount } from './project';
 import { createRng, type Rng } from './rng';
@@ -76,15 +77,6 @@ const ROUND_AMOUNTS: Record<Round, [number, number]> = {
   'series-a': [8_000_000, 18_000_000],
   'series-b': [25_000_000, 60_000_000],
 };
-
-/** Hiring mix by stage index — engineering-heavy early, GTM grows with scale. */
-const HIRE_MIX: ReadonlyArray<ReadonlyArray<readonly [Func, number]>> = [
-  [['engineering', 70], ['design', 15], ['gtm', 5],  ['operations', 10]],
-  [['engineering', 60], ['design', 15], ['gtm', 15], ['operations', 10]],
-  [['engineering', 50], ['design', 12], ['gtm', 26], ['operations', 12]],
-  [['engineering', 42], ['design', 10], ['gtm', 33], ['operations', 15]],
-  [['engineering', 38], ['design', 8],  ['gtm', 36], ['operations', 18]],
-];
 
 const FUNC_LEADER_TITLES: Record<Func, string[]> = {
   engineering: ['CTO', 'VP Engineering', 'Engineering Manager'],
@@ -198,7 +190,14 @@ export function simulate(config: SimConfig): OrgEvent[] {
     lastRaiseAt = at;
   }
 
-  if (config.simulateFrom && config.simulateFrom > cursor) cursor = config.simulateFrom;
+  if (config.simulateFrom && config.simulateFrom > cursor) {
+    // Stay on the weekly grid financeSeries folds on — it walks from the
+    // founding date — so the generator's weeks and the UI's weeks are the same
+    // weeks and the two sets of books cannot drift apart.
+    const gridOrigin = ctx.state.foundedAt ?? config.simulateFrom;
+    const offset = daysBetween(gridOrigin, config.simulateFrom);
+    cursor = addDays(gridOrigin, Math.ceil(offset / 7) * 7);
+  }
 
   const founder = Object.values(ctx.state.people).find((p) => p.isFounder);
   if (!founder) throw new Error('prologue must include a company-founded event');
@@ -219,29 +218,46 @@ export function simulate(config: SimConfig): OrgEvent[] {
     cursor = addDays(cursor, 7);
     if (cursor > config.until) break;
     ctx.weeksInStage += 1;
-    ctx.finance = stepFinance(ctx.finance, ctx.state, cursor);
     if (ctx.hiringFreezeWeeks > 0) ctx.hiringFreezeWeeks -= 1;
     if (ctx.postLayoffWeeks > 0) ctx.postLayoffWeeks -= 1;
 
-    if (ctx.windDownAt !== null) {
-      if (cursor >= ctx.windDownAt) executeShutdown(ctx, cursor);
-      continue;
-    }
+    runWeek(ctx, cursor, ambitionMul, turbulence, minRunwayWeeks);
 
-    stepFundraising(ctx, cursor, ambitionMul, turbulence);
-    if (ctx.state.status !== 'operating' || ctx.windDownAt !== null) continue;
-    stepDownturn(ctx, cursor, turbulence);
-    if (ctx.state.status !== 'operating' || ctx.windDownAt !== null) continue;
-    stepExecHires(ctx, cursor);
-    stepAppointedLeads(ctx, cursor);
-    stepHiring(ctx, cursor, ambitionMul, minRunwayWeeks);
-    stepAttrition(ctx, cursor, turbulence);
-    stepPromotions(ctx, cursor);
-    stepConversions(ctx, cursor);
-    stepRelocation(ctx, cursor);
+    // The books close after the week's events, which is exactly how
+    // financeSeries folds the log: apply everything dated this week, then
+    // advance one week of burn. Same order, same numbers — decisions made
+    // during the week therefore read last week's balance, as they would in a
+    // real company.
+    ctx.finance = stepFinance(ctx.finance, ctx.state, cursor);
   }
 
   return ctx.events;
+}
+
+/** One simulated week. Early returns here are why the caller closes the books. */
+function runWeek(
+  ctx: SimCtx,
+  at: IsoDate,
+  ambitionMul: number,
+  turbulence: number,
+  minRunwayWeeks: number,
+): void {
+  if (ctx.windDownAt !== null) {
+    if (at >= ctx.windDownAt) executeShutdown(ctx, at);
+    return;
+  }
+
+  stepFundraising(ctx, at, ambitionMul, turbulence);
+  if (ctx.state.status !== 'operating' || ctx.windDownAt !== null) return;
+  stepDownturn(ctx, at, turbulence);
+  if (ctx.state.status !== 'operating' || ctx.windDownAt !== null) return;
+  stepExecHires(ctx, at);
+  stepAppointedLeads(ctx, at);
+  stepHiring(ctx, at, ambitionMul, minRunwayWeeks);
+  stepAttrition(ctx, at, turbulence);
+  stepPromotions(ctx, at);
+  stepConversions(ctx, at);
+  stepRelocation(ctx, at);
 }
 
 // ---------------------------------------------------------------------------
