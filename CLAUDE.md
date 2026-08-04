@@ -17,6 +17,7 @@ the simulated work system with knowable ground truth.
 | `src/engine/project.ts` | The one reducer; `project(events, until)` = org as of a date |
 | `src/engine/validate.ts` | Realism invariants (singleton execs, acyclic chains, …) |
 | `src/engine/metrics.ts` | Derived capacity + finances; `stepFinance` is the second reducer |
+| `src/engine/mix.ts` | Stage hiring mix — shared by the simulator and the demand model |
 | `src/engine/describe.ts` | Reference English per event (shared web + CLI) |
 | `src/app/` | React UI: `App` (state) → `Timeline`, `OrgPanel`, `Sparkline` |
 | `scripts/peek.ts` | Terminal timeline viewer |
@@ -51,14 +52,23 @@ npm run build        # tsc --noEmit && vite build
    repo's explainability is a feature; today the runtime deps are react and react-dom, full stop.
 6. **Comments state constraints only** (why something must be so), never narration of what
    code does. Match the existing density.
-7. **Calibration constants** in `simulate.ts` trace to `docs/research/org-realism.md`; if
-   you tune one, keep the trail (update the comment) and re-run the outcome-spread test.
+7. **Calibration constants** in `simulate.ts` (stage machine) *and* `metrics.ts`
+   (`DEFAULT_MODEL` — salaries, ramp, management drag, revenue, churn) trace to
+   `docs/research/org-realism.md`; if you tune one, keep the trail (update the comment) and
+   re-run the calibration suite. Changing anything the simulator makes decisions on —
+   runway, capital, the hiring floor — reshuffles every seed, so re-sweep rather than
+   comparing two runs.
+8. **Two reducers, both shared.** `applyEvent` folds events into org state; `stepFinance` +
+   `applyFinanceEvent` fold them into the books. The simulator and the UI must both advance
+   the books through the same pair, in the same order (events first, then the week's step),
+   or the panel starts disagreeing with the generator's own decisions.
 
 ## Data flow (hold this in your head; it's the whole app)
 
 ```
-seed → simulate(config) → OrgEvent[] → project(events, asOf) → OrgState → tree/stats
-                              └→ headcountSeries / describe() → sparkline / timeline
+seed → simulate(config) → OrgEvent[] → project(events, asOf)     → OrgState → tree/stats
+                              ├→ financeSeries(events)[asOf]     → capital/runway/bandwidth
+                              └→ headcountSeries / describe()    → sparkline / timeline
 ```
 
 UI state is exactly: `seedInput`, `asOf`, `playing`, `hidden` (filter set). Everything else

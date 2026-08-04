@@ -114,8 +114,11 @@ derives two more layers — **neither of which adds an event type**:
 
 `stepFinance` is a **second reducer**, and it obeys the same rule as `applyEvent`:
 the simulator advances the books with it each tick, and the UI folds the log with
-it via `financeSeries`. They cannot disagree, which is why the simulator can make
-life-or-death decisions on numbers the panel renders.
+it via `financeSeries`. Both apply a week's events *first* and close the books
+*after*, on the same weekly grid — measured at zero divergence across 19,000+
+company-weeks, which is why the simulator can make life-or-death decisions on the
+numbers the panel renders. (They were ~$97K apart before the ordering was aligned;
+"same reducer" is not the same claim as "same call order".)
 
 That coupling is load-bearing. Insolvency — not a timer — is what ends a funded
 company, so a team that hires hard genuinely dies sooner. Conversely a company
