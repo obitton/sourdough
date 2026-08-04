@@ -26,7 +26,7 @@ npm run peek       # the same simulator, printed to your terminal
 npm run peek -- rye-7 2035-01-01   # any seed, any horizon
 ```
 
-## The three ideas
+## Three ideas and a consequence
 
 **1. Events are the only source of truth.** The simulator emits a typed event log
 ([types.ts](src/engine/types.ts)); everything else — the org chart, headcount, team rosters,

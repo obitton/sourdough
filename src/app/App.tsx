@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addDays,
   croutonConfig,
@@ -29,6 +29,12 @@ const STARTERS = [
 const clamp = (value: IsoDate, min: IsoDate, max: IsoDate): IsoDate =>
   value < min ? min : value > max ? max : value;
 
+// The org panel holds a tree that grows sideways with the company, so how much
+// room it needs is a judgement only the person reading it can make.
+const MIN_PANEL = 340;
+const MAX_PANEL = 900;
+const clampWidth = (px: number) => Math.min(MAX_PANEL, Math.max(MIN_PANEL, Math.round(px)));
+
 export function App() {
   const [seedInput, setSeedInput] = useState('crouton');
   const seed = seedInput.trim() || 'crouton';
@@ -56,6 +62,8 @@ export function App() {
   // Render-time reset when a different company arrives — an effect here would
   // commit one throwaway frame of the new company at the old date.
   const [whatIfId, setWhatIfId] = useState<string | null>(null);
+  const [panelWidth, setPanelWidth] = useState(520);
+  const columnsRef = useRef<HTMLElement>(null);
 
   const [shownSeed, setShownSeed] = useState(deferredSeed);
   if (shownSeed !== deferredSeed) {
@@ -168,8 +176,34 @@ export function App() {
         </span>
       </div>
 
-      <main className="columns">
+      <main
+        className="columns"
+        ref={columnsRef}
+        style={{ '--panel-w': `${panelWidth}px` } as React.CSSProperties}
+      >
         <Timeline events={visible} names={names} asOf={asOf} playing={playing} onJump={setAsOf} />
+        <div
+          className="splitter"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="resize panels"
+          aria-valuenow={panelWidth}
+          aria-valuemin={MIN_PANEL}
+          aria-valuemax={MAX_PANEL}
+          tabIndex={0}
+          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+          onPointerMove={(e) => {
+            // Driven by the live button state rather than a React flag, so the
+            // drag cannot miss a frame waiting for state to settle.
+            if (e.buttons !== 1 || !columnsRef.current) return;
+            setPanelWidth(clampWidth(columnsRef.current.getBoundingClientRect().right - e.clientX));
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            setPanelWidth((w) => clampWidth(w + (e.key === 'ArrowLeft' ? 24 : -24)));
+          }}
+        />
         <OrgPanel
           // A different company gets a fresh panel: local view state (the
           // hiring slider, the open person card) is about the old one.

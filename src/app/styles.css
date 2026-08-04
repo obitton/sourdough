@@ -107,11 +107,23 @@ input[type='range']:focus-visible {
 
 /* ---------- columns ---------- */
 
+/* The panel width is a CSS variable rather than an inline grid template so the
+   small-screen rule below can still override the whole layout. */
 .columns {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: minmax(0, 1fr) 5px var(--panel-w, 520px);
   min-height: 0;
 }
+
+.splitter {
+  cursor: col-resize;
+  background: var(--border);
+  border: none;
+  padding: 0;
+  touch-action: none;
+}
+.splitter:hover,
+.splitter:focus-visible { background: var(--accent); outline: none; }
 
 /* ---------- timeline ---------- */
 
@@ -499,6 +511,7 @@ input[type='range'] {
 /* ---------- small screens ---------- */
 
 @media (max-width: 920px) {
-  .columns { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  .columns { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr); }
   .timeline { border-right: none; border-bottom: 1px solid var(--border); }
+  .splitter { display: none; }
 }
