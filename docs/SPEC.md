@@ -162,3 +162,21 @@ reports reassigned, runway gained) without touching the event log.
 One team per function; the founder never leaves; no rehires; titles are a flat string (no
 level lattice); funding amounts are cosmetic; weekly resolution. Each is a conscious v0 cut —
 listed here so they read as decisions, not oversights.
+
+On the money side specifically:
+
+- **Burn is priced on base salary, not fully-loaded cost.** Benefits and payroll tax add
+  25–35% (Kruze; BLS implies ~1.29× once paid leave is netted out). A loaded model shortens
+  every runway by roughly that factor.
+- **Pre-round payroll is not tracked at all**, because the model does not follow the founder's
+  own savings. A bootstrapped company shows zero burn and dies on a time fuse instead.
+- **ARR is ceilinged** by what a team of that size can carry (~$130K/head — SaaS Capital's
+  measured median for private SaaS is $129,724). Without the ceiling, a company whose headcount
+  stops growing compounds revenue forever and every survivor drifts into permanent
+  profitability.
+- **`rampFloor` has no literature behind it.** Nobody publishes day-one output as a fraction of
+  full output; 0.25 is a stated assumption.
+
+`docs/research/org-realism.md` §8 sources every constant in `DEFAULT_MODEL` and ends with the
+six gaps a next calibration pass should close — the largest being that revenue per sales rep
+is roughly twice the published figure.

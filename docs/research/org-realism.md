@@ -185,3 +185,74 @@ Observed sequence (SaaStr ARR benchmarks; map ARR→stage roughly as A≈$1–5M
 - Mercury — Employee vs contractor: https://mercury.com/blog/employee-vs-independent-contractor-startups
 - Alumni Ventures — How venture investments exit: https://www.av.vc/blog/av-academy-vc-201-class-3-how-venture-investments-exit
 - Forbes — The new venture playbook (Carta data): https://www.forbes.com/sites/kylewestaway/2025/02/24/the-new-venture-playbook-the-data-every-founder-needs-to-know/
+
+---
+
+# §8 Capacity and unit economics
+
+Sources for every constant in `DEFAULT_MODEL` (`src/engine/metrics.ts`) — the capacity and
+money layer. Compiled 2026-08-04. Where the repo's value and the best available figure differ,
+the row says so rather than quietly agreeing with itself; the "gaps" section at the end lists
+what a next calibration pass should change.
+
+## Compensation
+
+| Constant | Repo | Published figure | Source |
+|---|---|---|---|
+| Fully-loaded multiplier | ~1.3× base | "plan for total compensation costs about **25–35% higher** than base" — payroll tax ~10%, benefits 15–25% | [Kruze Consulting, Guide to Startup Compensation (2024-12)](https://kruzeconsulting.com/blog/startup-compensation-guide/) |
+| — independent check | 1.3× | BLS ECEC Mar 2026: private-industry total comp $46.60/hr vs wages $32.60/hr. Headline 1.43×, but that counts paid leave and bonuses as "benefits"; netting those out of Table A gives **~1.29×** | [BLS ECEC](https://www.bls.gov/news.release/ecec.nr0.htm) |
+| `salaryUsd.engineering` | $200K | Carta: average salary for **new engineering hires** ≈ **$189K**, the highest of any function alongside product | [Carta, Startup salaries in 2025](https://carta.com/data/q2-compensation-ai-engineers/) |
+| `salaryUsd.design` | $175K | Levels.fyi US Product Designer median TC **$167K**; Kruze senior-designer base $100–172K (SF) | [Levels.fyi](https://www.levels.fyi/t/product-designer/locations/united-states) |
+| `salaryUsd.gtm` | $165K | Levels.fyi US sales median TC **$160K**. But Bridge Group puts median AE **OTE at $190K** (53:47 base:variable) — see gaps | [Bridge Group 2024 AE Report](https://blog.bridgegroupinc.com/2024-ae-metrics-compensation-benchmark) |
+| `salaryUsd.operations` | $140K | Levels.fyi US Business Operations median TC **$152K**; Kruze seed-stage COO average $135K | [Levels.fyi](https://www.levels.fyi/t/biz-ops/locations/united-states) |
+| `salaryUsd.leadership` | $250K | Pave VP Marketing (E7) median **base $252,471**; Kruze head-of-function base $200–325K (SF) | [Pave Salary Guide 2026](https://www.pave.com/blog-posts/marketing-salary-guide) |
+| `founderSalaryEarlyUsd` | $130K | Kruze payroll data, 450+ VC-backed startups: seed-stage CEO average **$132K** (2024), rising to $147K (2025) and $153K (2026) | [Kruze CEO Salary Report](https://kruzeconsulting.com/blog/startup-ceo-salary-report/) |
+
+**These are base-salary figures, and the model prices burn on them directly.** A fully-loaded
+model would multiply by ~1.3 and shorten every runway by roughly the same factor. That is a
+deliberate v0 simplification, recorded in SPEC §8 — not an oversight, and worth stating before
+anyone asks.
+
+## Capacity
+
+| Constant | Repo | Published figure | Source |
+|---|---|---|---|
+| `rampWeeks` | 12 | **8 months average** (~35 weeks) to full productivity; 25% of companies say ≤3 months, and the same survey notes small companies ramp faster | [Allied Workforce Mobility Survey](https://www.allied.com/docs/default-source/pdf/alliedworkforcemobilitysurvey.pdf) |
+| `rampFloor` | 0.25 | **No published measurement exists** of day-one output as a fraction of full output. Closest evidence: new hires are explicitly excluded from "production" capacity during a 4–6 month probation | [Karre et al., arXiv:2305.03332](https://arxiv.org/abs/2305.03332) |
+| `managementCostPerReport` | 0.06 | Gallup: managers spend a **median 40%** of time on IC work and 97% carry IC duties; average span 12.1 reports, median 5–6. Implies ~5%/report at the mean span, 10–12% at the median | [Gallup, Span of Control (2026-01)](https://www.gallup.com/workplace/700718/span-control-optimal-team-size-managers.aspx) |
+| `managementFloor` | 0.35 | Gallup's median manager IC share is **40%** | same |
+| `employmentFactor['part-time']` | 0.5 | BLS CPS: full-time average 41.7 hrs/wk vs part-time mean ~22.1 → **0.53** | [BLS CPS Table A-24](https://www.bls.gov/web/empsit/cpseea24.htm) |
+| `employmentFactor['contract']` | 0.9 | BLS contingent-worker supplement: independent contractors are 70.7% full-time vs 84.9% for traditional workers → **0.92** effective FTE ratio | [BLS Contingent Arrangements 2023](https://www.bls.gov/news.release/conemp.t06.htm) |
+
+`rampFloor` is the one constant in the model with **no supporting literature**. It is a stated
+assumption; the honest answer if asked is that nobody publishes day-one output fractions.
+
+## Revenue
+
+| Constant | Repo | Published figure | Source |
+|---|---|---|---|
+| `arrPerGtmWeekUsd` | $11.5K/wk ≈ **$600K/yr** per seller | Bridge Group: median AE quota $800K × 51% attainment ≈ **$408K attained**. KeyBanc/Sapphire: median **$328K new ARR per AE** | [Bridge Group 2024](https://blog.bridgegroupinc.com/2024-ae-metrics-compensation-benchmark) |
+| `maxArrPerHeadUsd` | $130K | SaaS Capital 2025, 1,000+ private SaaS: median revenue per employee **$129,724** (2026: $141,125). Public SaaS runs ~$395K — do not use the public number | [SaaS Capital, Revenue per Employee](https://www.saas-capital.com/blog-posts/revenue-per-employee-benchmarks-for-private-saas-companies/) |
+| `annualChurn` | 0.15 | SaaS Capital 2023, 1,500+ private B2B SaaS: median GRR 91% → **9% gross churn**. Benchmarkit 2026: median GRR fell to 84% → **16%** | [SaaS Capital Retention Benchmarks](https://www.saas-capital.com/wp-content/uploads/2023/05/RB28WS1-2023-B2B-SaaS-Retention-Benchmarks.pdf) |
+| `minRunwayWeeks` (simulate.ts) | 78 wks = 18 mo | YC: "an average funding round lasts **18–24 months**." Kruze: seed/Series A "should plan to have **18 months of runway at a minimum**," start planning the next raise at 12 months | [YC on spending after fundraising](https://ycombinator.com/blog/how-much-should-you-spend-after-fundraising/) |
+
+`maxArrPerHeadUsd` is the strongest match in the whole model: $130K against a measured median
+of $129,724.
+
+## Known gaps — for the next calibration pass
+
+These were found while sourcing and are **not** yet fixed, because each changes histories and
+would need a full re-sweep against the bands in `calibration.test.ts`:
+
+1. **`arrPerGtmWeekUsd` is ~50% too generous.** Both primary sources land at $330–410K of new
+   ARR per rep per year, not $600K. Lowering it slows every company's path to default-alive.
+2. **GTM salary should probably be OTE, not base.** Commission is real cash: Bridge Group's
+   median OTE is $190K against the repo's $165K. Under-pricing sellers overstates capital
+   efficiency, and the model already counts their output separately.
+3. **Founder pay steps up too steeply** — $130K straight to $250K (+92%) at Series A. Kruze's
+   actual ladder is seed $133K → A $183K → B $218K, roughly +38% then +19%.
+4. **`rampWeeks` is optimistic.** The only primary survey found says 8 months, not 3; the
+   12-week figure is the familiar "90 days" framing rather than a measured one.
+5. **`managementFloor` should be 0.40**, matching Gallup's median directly, rather than 0.35.
+6. **Salaries are base, not fully-loaded** (see above) — the largest single effect, worth ~30%
+   on every burn figure and therefore on every runway.

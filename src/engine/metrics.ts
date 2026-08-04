@@ -23,7 +23,12 @@ import type { Func, IsoDate, OrgEvent, OrgState, Person, PersonFunc } from './ty
 // ---------------------------------------------------------------------------
 
 export interface MetricsModel {
-  /** Fully-loaded annual cost per person (salary + tax + benefits + software). */
+  /**
+   * Annual **base** salary per person — burn is priced on base, not on the
+   * ~1.3× fully-loaded cost (Kruze: benefits and payroll tax add 25–35%). A
+   * loaded model would shorten every runway by about the same factor; that is
+   * a stated v0 simplification, see SPEC §8 and org-realism.md §8.
+   */
   salaryUsd: Record<PersonFunc, number>;
   /** Founder pay before a Series A — well under market, and it buys runway. */
   founderSalaryEarlyUsd: number;
@@ -56,8 +61,11 @@ export interface MetricsModel {
   defaultAliveTargetCoverage: number;
 }
 
+// Every constant here cites docs/research/org-realism.md §8.
 export const DEFAULT_MODEL: MetricsModel = {
-  // Fully-loaded ≈ 1.3× base salary. Levels.fyi/Pave medians for US startups.
+  // Carta: new engineering hires average ~$189K, the top function alongside
+  // product. Design/GTM/ops from Levels.fyi medians, leadership from Pave's
+  // VP base ($252K).
   salaryUsd: {
     engineering: 200_000,
     design: 175_000,
@@ -65,17 +73,20 @@ export const DEFAULT_MODEL: MetricsModel = {
     operations: 140_000,
     leadership: 250_000,
   },
-  // Kruze's founder-compensation survey: ~$130K through seed, stepping up
-  // only after an A. Underpaying yourself is a funding decision.
+  // Kruze's payroll data across 450+ funded startups: seed-stage CEO averaged
+  // $132K. Underpaying yourself is a funding decision.
   founderSalaryEarlyUsd: 130_000,
   employmentFactor: { 'full-time': 1, 'part-time': 0.5, contract: 0.9 },
-  // ~3 months to full productivity is the standard onboarding figure; a hire
-  // is a cost immediately and capacity only later, which is why hiring your
-  // way out of an overloaded quarter does not work.
+  // ~3 months to full productivity is the familiar figure; the one primary
+  // survey found says 8 months, so this is the optimistic end (§8 gap 4). A
+  // hire is a cost immediately and capacity only later, which is why hiring
+  // your way out of an overloaded quarter does not work.
   rampWeeks: 12,
+  // The one constant with no literature behind it: nobody publishes day-one
+  // output as a fraction of full output. A stated assumption.
   rampFloor: 0.25,
-  // Managing is real work: ~6% of a week per report, so an eight-report
-  // manager has roughly half a week of their own left.
+  // Managing is real work. Gallup: managers spend a median 40% of their time
+  // on IC work at an average span of 12 reports, which implies ~5–6% a report.
   managementCostPerReport: 0.06,
   managementFloor: 0.35,
   leadershipIcFactor: 0.4,
